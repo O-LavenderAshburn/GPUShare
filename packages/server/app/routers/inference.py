@@ -288,7 +288,7 @@ async def list_models(
                 models.append(ModelInfo(
                     id=m["id"],
                     owned_by="openrouter",
-                    cost_per_million_tokens=round(avg_rate * 1_000_000, 4) if settings.BILLING_ENABLED else 0,
+                    cost_per_million_tokens=round(avg_rate * 1_000_000, 4),
                 ))
         except Exception:
             pass

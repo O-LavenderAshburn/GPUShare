@@ -233,7 +233,7 @@ export function ChatPage() {
                 <span className={`px-1.5 py-0.5 rounded ${m.owned_by === 'local' ? 'bg-green-900/50 text-green-400' : 'bg-purple-900/50 text-purple-400'}`}>
                   {m.owned_by === 'local' ? 'Local GPU' : 'OpenRouter'}
                 </span>
-                {billingEnabled && m.cost_per_million_tokens > 0 && (
+                {m.cost_per_million_tokens > 0 && (billingEnabled || m.owned_by !== 'local') && (
                   <span className="text-gray-500">${m.cost_per_million_tokens.toFixed(2)}/M tokens</span>
                 )}
               </span>
