@@ -10,7 +10,7 @@ from glob import glob
 
 from sqlalchemy import select, update
 
-from app.database import async_session
+from app.database import get_session_factory
 from app.lib.billing import calculate_render_cost, write_ledger_entry
 from app.lib.blender import render_job
 from app.lib.r2 import download_file, generate_signed_url, upload_file
@@ -27,7 +27,7 @@ async def process_job(job_id, blend_key, engine, frame_start, frame_end,
 
     try:
         # 1. Mark as rendering
-        async with async_session() as db:
+        async with get_session_factory()() as db:
             await db.execute(
                 update(RenderJob)
                 .where(RenderJob.id == job_id)
@@ -44,7 +44,7 @@ async def process_job(job_id, blend_key, engine, frame_start, frame_end,
 
         # 3. Frame progress callback
         async def on_frame_done(frames_done: int):
-            async with async_session() as db:
+            async with get_session_factory()() as db:
                 await db.execute(
                     update(RenderJob)
                     .where(RenderJob.id == job_id)
@@ -84,7 +84,7 @@ async def process_job(job_id, blend_key, engine, frame_start, frame_end,
         # 7. Calculate cost and write ledger
         cost_nzd, kwh = calculate_render_cost(render_seconds)
 
-        async with async_session() as db:
+        async with get_session_factory()() as db:
             await write_ledger_entry(
                 db, user_id, -cost_nzd, "render_usage",
                 description=f"Render job {job_id}: {render_seconds:.0f}s"
@@ -111,7 +111,7 @@ async def process_job(job_id, blend_key, engine, frame_start, frame_end,
 
     except Exception as e:
         # Mark job as failed
-        async with async_session() as db:
+        async with get_session_factory()() as db:
             await db.execute(
                 update(RenderJob)
                 .where(RenderJob.id == job_id)
@@ -134,7 +134,7 @@ async def worker_loop():
 
     while True:
         try:
-            async with async_session() as db:
+            async with get_session_factory()() as db:
                 result = await db.execute(
                     select(RenderJob)
                     .where(RenderJob.status == "queued")

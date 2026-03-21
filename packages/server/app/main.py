@@ -14,8 +14,8 @@ async def lifespan(app: FastAPI):
     # Startup: nothing needed (DB connection is lazy via SQLAlchemy pool)
     yield
     # Shutdown: dispose engine
-    from app.database import engine
-    await engine.dispose()
+    from app.database import get_engine
+    await get_engine().dispose()
 
 
 settings = get_settings()

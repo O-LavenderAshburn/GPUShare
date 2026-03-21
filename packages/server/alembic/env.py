@@ -1,18 +1,22 @@
 """Alembic async migration environment."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.config import get_settings
-from app.database import Base
+# Load .env so DATABASE_URL is available without the full Settings class
+load_dotenv()
+
+from app.database import Base  # noqa: E402
 
 # Import all models so that Base.metadata is fully populated
-import app.models.models  # noqa: F401
+import app.models.models  # noqa: E402, F401
 
 # Alembic Config object (provides access to alembic.ini values)
 config = context.config
@@ -21,9 +25,9 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the real DATABASE_URL from application config
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Override sqlalchemy.url with DATABASE_URL from environment
+database_url = os.environ.get("DATABASE_URL", "")
+config.set_main_option("sqlalchemy.url", database_url)
 
 # MetaData object for 'autogenerate' support
 target_metadata = Base.metadata
