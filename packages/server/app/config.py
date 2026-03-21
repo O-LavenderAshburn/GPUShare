@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     CLOUDFLARE_R2_SECRET_ACCESS_KEY: str = ""
     CLOUDFLARE_R2_BUCKET: str = "gpu-node-files"
     RESEND_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODELS: str = ""  # comma-separated, e.g. "openai/gpt-4o,anthropic/claude-sonnet-4"
 
     # ── Services & compute ───────────────────────────────────────────────
     SERVICES_ENABLED: str = "inference,render"
@@ -70,6 +72,10 @@ class Settings(BaseSettings):
     def models_list(self) -> list[str]:
         """Return MODELS split into a list."""
         return [m.strip() for m in self.MODELS.split(",") if m.strip()]
+
+    @property
+    def openrouter_models_list(self) -> list[str]:
+        return [m.strip() for m in self.OPENROUTER_MODELS.split(",") if m.strip()]
 
 
 @lru_cache

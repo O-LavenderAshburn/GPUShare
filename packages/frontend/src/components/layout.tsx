@@ -73,7 +73,8 @@ export function Layout() {
 
   const [balance, setBalance] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-  const { status } = useServerStatus(authed);
+  const { status, health } = useServerStatus(authed);
+  const billingEnabled = health?.integrations?.billing ?? false;
 
   useEffect(() => {
     if (!authed) return;
@@ -126,7 +127,7 @@ export function Layout() {
           ))}
         </nav>
         <div className="p-4 border-t border-gray-800 space-y-2">
-          {balance !== null && (
+          {billingEnabled && balance !== null && (
             <div className="text-sm">
               <span className="text-gray-400">Balance: </span>
               <span className={balance > 10 ? 'text-green-400' : balance > 5 ? 'text-yellow-400' : balance > 0 ? 'text-orange-400' : 'text-red-400'}>

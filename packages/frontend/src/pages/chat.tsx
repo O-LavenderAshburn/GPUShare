@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { inference } from '../lib/api';
+import { inference, getHealth } from '../lib/api';
 import type { ChatMessage } from '@shared/types/inference';
 import type { ModelInfo } from '@shared/types/inference';
 
@@ -45,6 +45,7 @@ export function ChatPage() {
   );
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   const activeChat = chats.find(c => c.id === activeChatId) ?? null;
@@ -55,6 +56,7 @@ export function ChatPage() {
       setModels(res.data);
       if (res.data.length > 0 && !selectedModel) setSelectedModel(res.data[0].id);
     }).catch(() => {});
+    getHealth().then(h => setBillingEnabled(h.integrations.billing)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -218,14 +220,25 @@ export function ChatPage() {
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500"
           >
             {models.map(m => (
-              <option key={m.id} value={m.id}>{m.id}</option>
+              <option key={m.id} value={m.id}>
+                {m.id} ({m.owned_by === 'local' ? 'Local' : 'Cloud'})
+              </option>
             ))}
           </select>
-          {models.find(m => m.id === selectedModel) && (
-            <span className="text-xs text-gray-500">
-              ${models.find(m => m.id === selectedModel)!.cost_per_million_tokens.toFixed(2)}/M tokens
-            </span>
-          )}
+          {(() => {
+            const m = models.find(m => m.id === selectedModel);
+            if (!m) return null;
+            return (
+              <span className="flex items-center gap-2 text-xs">
+                <span className={`px-1.5 py-0.5 rounded ${m.owned_by === 'local' ? 'bg-green-900/50 text-green-400' : 'bg-purple-900/50 text-purple-400'}`}>
+                  {m.owned_by === 'local' ? 'Local GPU' : 'OpenRouter'}
+                </span>
+                {billingEnabled && m.cost_per_million_tokens > 0 && (
+                  <span className="text-gray-500">${m.cost_per_million_tokens.toFixed(2)}/M tokens</span>
+                )}
+              </span>
+            );
+          })()}
         </div>
 
         <div className="flex-1 overflow-auto p-4 space-y-4">

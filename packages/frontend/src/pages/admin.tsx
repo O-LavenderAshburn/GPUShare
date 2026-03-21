@@ -58,6 +58,14 @@ function getIntegrations(health: HealthResponse | null): Integration[] {
       setupLabel: 'Set BILLING_ENABLED=true in .env',
     },
     {
+      key: 'openrouter',
+      name: 'OpenRouter',
+      configured: health?.integrations?.openrouter ?? false,
+      description: 'Cloud AI models (GPT-4o, Claude, etc). Users can access API models alongside local ones. Usage is billed at OpenRouter rates.',
+      setupUrl: 'https://openrouter.ai/keys',
+      setupLabel: 'Get API key',
+    },
+    {
       key: 'tapo',
       name: 'Tapo Smart Plug',
       configured: i?.tapo ?? false,

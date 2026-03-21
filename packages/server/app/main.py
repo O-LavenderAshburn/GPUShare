@@ -71,6 +71,7 @@ async def health():
         "r2": bool(settings.CLOUDFLARE_R2_ACCOUNT_ID and settings.CLOUDFLARE_R2_ACCOUNT_ID != "placeholder"),
         "resend": bool(settings.RESEND_API_KEY and settings.RESEND_API_KEY != "re_placeholder"),
         "billing": settings.BILLING_ENABLED,
+        "openrouter": bool(settings.OPENROUTER_API_KEY),
         "tapo": tapo_configured(),
     }
 

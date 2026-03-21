@@ -28,6 +28,7 @@ export interface HealthResponse {
     r2: boolean;
     resend: boolean;
     billing: boolean;
+    openrouter: boolean;
     tapo: boolean;
   };
   power: PowerData | null;
@@ -105,6 +106,7 @@ export const auth = {
   listApiKeys: () => get<ApiKeyResponse[]>('/v1/auth/api-keys'),
   createApiKey: (data: ApiKeyCreateRequest) => post<ApiKeyCreateResponse>('/v1/auth/api-keys', data),
   revokeApiKey: (id: string) => del<void>(`/v1/auth/api-keys/${id}`),
+  updateMyLimit: (hard_limit_nzd: number) => patch<{ hard_limit_nzd: number }>('/v1/auth/me/limit', { hard_limit_nzd }),
 };
 
 // Billing

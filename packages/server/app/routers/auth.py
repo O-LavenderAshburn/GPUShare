@@ -198,6 +198,35 @@ async def me(user: User = Depends(get_current_user)):
     return user
 
 
+@router.patch("/me/limit")
+async def update_my_limit(
+    body: dict,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Let users set their own hard limit (must be stricter than admin default)."""
+    from decimal import Decimal
+    from app.config import get_settings as _get_settings
+
+    new_limit = body.get("hard_limit_nzd")
+    if new_limit is None:
+        raise HTTPException(status_code=400, detail="hard_limit_nzd is required")
+
+    admin_default = _get_settings().HARD_LIMIT_DEFAULT
+    new_limit_dec = Decimal(str(new_limit))
+
+    # Users can only make their limit stricter (closer to zero) than the admin default
+    if new_limit_dec < admin_default:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Limit cannot be lower than the system default ({admin_default})",
+        )
+
+    user.hard_limit_nzd = new_limit_dec
+    await db.flush()
+    return {"hard_limit_nzd": float(user.hard_limit_nzd)}
+
+
 @router.post("/api-keys", response_model=ApiKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     body: ApiKeyCreateRequest,

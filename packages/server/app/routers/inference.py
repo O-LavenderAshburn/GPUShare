@@ -20,7 +20,13 @@ from app.lib.billing import (
     get_inference_cost_per_token,
     write_ledger_entry,
 )
-from app.lib.ollama import chat_completion, chat_completion_stream, count_tokens
+from app.lib.ollama import chat_completion as ollama_chat, chat_completion_stream as ollama_stream, count_tokens, list_models as ollama_list_models
+from app.lib.openrouter import (
+    chat_completion as openrouter_chat,
+    chat_completion_stream as openrouter_stream,
+    is_openrouter_model,
+    list_models as openrouter_list_models,
+)
 from app.models import UsageLog, User
 from app.routers.auth import get_current_user
 from app.schemas.inference import (
@@ -50,18 +56,20 @@ async def create_chat_completion(
     """OpenAI-compatible chat completion (streaming and non-streaming)."""
     settings = get_settings()
 
-    # Check user balance against hard limit
-    if not await check_balance_ok(db, user.id, user.hard_limit_nzd):
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient balance. Please top up your account.",
-        )
+    # Check billing if enabled
+    if settings.BILLING_ENABLED:
+        if not await check_balance_ok(db, user.id, user.hard_limit_nzd):
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient balance. Please top up your account.",
+            )
 
     # Count input tokens
     input_text = " ".join(m.content for m in body.messages)
     input_tokens = count_tokens(input_text)
 
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    use_openrouter = is_openrouter_model(body.model) and settings.OPENROUTER_API_KEY
 
     if body.stream:
         return StreamingResponse(
@@ -73,24 +81,32 @@ async def create_chat_completion(
                 max_tokens=body.max_tokens,
                 user=user,
                 db=db,
+                use_openrouter=bool(use_openrouter),
             ),
             media_type="text/event-stream",
         )
 
     # Non-streaming path
-    result = await chat_completion(
-        model=body.model,
-        messages=messages,
-        temperature=body.temperature,
-        max_tokens=body.max_tokens,
-    )
-
-    # Extract assistant response
-    assistant_content = result.get("message", {}).get("content", "")
-    output_tokens = count_tokens(assistant_content)
+    if use_openrouter:
+        result = await openrouter_chat(
+            model=body.model, messages=messages,
+            temperature=body.temperature, max_tokens=body.max_tokens,
+        )
+        assistant_content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        # OpenRouter returns usage in the response
+        usage = result.get("usage", {})
+        output_tokens = usage.get("completion_tokens", count_tokens(assistant_content))
+        input_tokens = usage.get("prompt_tokens", input_tokens)
+    else:
+        result = await ollama_chat(
+            model=body.model, messages=messages,
+            temperature=body.temperature, max_tokens=body.max_tokens,
+        )
+        assistant_content = result.get("message", {}).get("content", "")
+        output_tokens = count_tokens(assistant_content)
 
     # Calculate cost and record usage
-    cost, kwh = calculate_inference_cost(input_tokens, output_tokens)
+    cost, kwh = _calculate_cost(body.model, input_tokens, output_tokens, use_openrouter=bool(use_openrouter))
 
     usage_log = UsageLog(
         user_id=user.id,
@@ -102,13 +118,14 @@ async def create_chat_completion(
     )
     db.add(usage_log)
 
-    await write_ledger_entry(
-        db=db,
-        user_id=user.id,
-        amount=-cost,
-        entry_type="inference_usage",
-        description=f"Inference: {body.model} ({input_tokens}+{output_tokens} tokens)",
-    )
+    if settings.BILLING_ENABLED:
+        await write_ledger_entry(
+            db=db,
+            user_id=user.id,
+            amount=-cost,
+            entry_type="inference_usage",
+            description=f"Inference: {body.model} ({input_tokens}+{output_tokens} tokens)",
+        )
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
@@ -132,6 +149,23 @@ async def create_chat_completion(
     )
 
 
+def _calculate_cost(
+    model: str, input_tokens: int, output_tokens: int, use_openrouter: bool = False
+) -> tuple[Decimal, Decimal]:
+    """Calculate cost. For OpenRouter, use their pricing. For local, use electricity."""
+    if use_openrouter:
+        # OpenRouter pricing is per-token, fetched at model list time
+        # For now, use a cached lookup. Cost is passed through at OpenRouter's rate.
+        # We store kwh=0 for cloud models since no local energy is used.
+        from app.lib.openrouter import _get_model_pricing
+        prompt_rate, completion_rate = _get_model_pricing(model)
+        cost = (Decimal(str(prompt_rate)) * input_tokens) + (Decimal(str(completion_rate)) * output_tokens)
+        return cost, Decimal("0")
+    else:
+        from app.lib.billing import calculate_inference_cost
+        return calculate_inference_cost(input_tokens, output_tokens)
+
+
 async def _stream_response(
     model: str,
     messages: list[dict],
@@ -140,24 +174,34 @@ async def _stream_response(
     max_tokens: int | None,
     user: User,
     db: AsyncSession,
+    use_openrouter: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE chunks for a streaming chat completion."""
+    settings = get_settings()
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
     collected_content = ""
 
-    async for chunk in chat_completion_stream(
+    stream_fn = openrouter_stream if use_openrouter else ollama_stream
+
+    async for chunk in stream_fn(
         model=model,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
     ):
-        # Extract content from Ollama chunk
-        content = chunk.get("message", {}).get("content", "")
+        if use_openrouter:
+            # OpenRouter returns OpenAI format directly
+            content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+            done = chunk.get("choices", [{}])[0].get("finish_reason") is not None
+        else:
+            # Ollama format
+            content = chunk.get("message", {}).get("content", "")
+            done = chunk.get("done", False)
+
         if content:
             collected_content += content
 
-        done = chunk.get("done", False)
         finish_reason = "stop" if done else None
 
         sse_chunk = {
@@ -178,7 +222,7 @@ async def _stream_response(
 
     # After stream ends, record usage
     output_tokens = count_tokens(collected_content)
-    cost, kwh = calculate_inference_cost(input_tokens, output_tokens)
+    cost, kwh = _calculate_cost(model, input_tokens, output_tokens, use_openrouter=use_openrouter)
 
     usage_log = UsageLog(
         user_id=user.id,
@@ -190,13 +234,14 @@ async def _stream_response(
     )
     db.add(usage_log)
 
-    await write_ledger_entry(
-        db=db,
-        user_id=user.id,
-        amount=-cost,
-        entry_type="inference_usage",
-        description=f"Inference: {model} ({input_tokens}+{output_tokens} tokens)",
-    )
+    if settings.BILLING_ENABLED:
+        await write_ledger_entry(
+            db=db,
+            user_id=user.id,
+            amount=-cost,
+            entry_type="inference_usage",
+            description=f"Inference: {model} ({input_tokens}+{output_tokens} tokens)",
+        )
     await db.commit()
 
     yield "data: [DONE]\n\n"
@@ -211,16 +256,41 @@ async def _stream_response(
 async def list_models(
     user: User = Depends(get_current_user),
 ):
-    """Return the list of configured models with pricing info."""
+    """Return only models that are actually available (local + OpenRouter)."""
     settings = get_settings()
-    cost_per_token = get_inference_cost_per_token()
+    models: list[ModelInfo] = []
 
-    models = [
-        ModelInfo(
+    # Local Ollama models — only those actually loaded
+    try:
+        available = await ollama_list_models()
+    except Exception:
+        available = []
+
+    local_cost = get_inference_cost_per_token()
+    for model_name in available:
+        models.append(ModelInfo(
             id=model_name,
-            cost_per_million_tokens=float(cost_per_token * Decimal("1000000")),
-        )
-        for model_name in settings.models_list
-    ]
+            owned_by="local",
+            cost_per_million_tokens=float(local_cost * Decimal("1000000")) if settings.BILLING_ENABLED else 0,
+        ))
+
+    # OpenRouter models
+    if settings.OPENROUTER_API_KEY:
+        try:
+            or_models = await openrouter_list_models()
+            for m in or_models:
+                pricing = m.get("pricing", {})
+                # OpenRouter pricing is per-token as a string
+                prompt_rate = float(pricing.get("prompt", "0"))
+                completion_rate = float(pricing.get("completion", "0"))
+                # Average the two rates and multiply by 1M for display
+                avg_rate = (prompt_rate + completion_rate) / 2
+                models.append(ModelInfo(
+                    id=m["id"],
+                    owned_by="openrouter",
+                    cost_per_million_tokens=round(avg_rate * 1_000_000, 4) if settings.BILLING_ENABLED else 0,
+                ))
+        except Exception:
+            pass
 
     return ModelsResponse(data=models)
