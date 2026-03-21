@@ -27,6 +27,16 @@ export function AccountPage() {
   const [limitInput, setLimitInput] = useState("");
   const [limitSaving, setLimitSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [paymentMethods, setPaymentMethods] = useState<
+    Array<{
+      id: string;
+      card_brand: string;
+      card_last4: string;
+      card_exp_month: number;
+      card_exp_year: number;
+    }>
+  >([]);
+  const [settingUpPayment, setSettingUpPayment] = useState(false);
 
   const billingEnabled =
     (health?.integrations?.billing && health?.integrations?.stripe) ?? false;
@@ -59,8 +69,36 @@ export function AccountPage() {
       getHealth()
         .then(setHealth)
         .catch(() => {}),
+      billing
+        .listPaymentMethods()
+        .then(setPaymentMethods)
+        .catch(() => {}),
     ]).finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    Promise.all([
+      authApi.getMe(),
+      billing.getBalance(),
+      billing.getUsage(),
+      billing.getInvoices(),
+      authApi.listApiKeys(),
+      getHealth(),
+      billing.listPaymentMethods(),
+    ])
+      .then(([u, b, usage, inv, keys, h, pm]) => {
+        setUser(u);
+        setBalance(b);
+        setUsage(usage);
+        setInvoices(inv);
+        setApiKeys(keys);
+        setHealth(h);
+        setPaymentMethods(pm);
+        setLimitInput(u.hard_limit_nzd.toString());
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -215,48 +253,86 @@ export function AccountPage() {
                 automatic payments by adding a payment method below.
               </p>
 
-              {user?.stripe_customer_id ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <svg
-                      className="w-4 h-4 text-green-400"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
+              {paymentMethods.length > 0 ? (
+                <div className="space-y-3">
+                  {paymentMethods.map((pm) => (
+                    <div
+                      key={pm.id}
+                      className="flex items-center justify-between p-3 bg-gray-900/50 border border-gray-700 rounded-lg"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <span className="text-gray-300">
-                      Payment method on file
-                    </span>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      // TODO: Implement payment method management
-                      alert("Payment method management coming soon!");
-                    }}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    Manage Payment Method
-                  </Button>
+                      <div className="flex items-center gap-3">
+                        <svg
+                          className="w-4 h-4 text-green-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                        <div className="text-sm">
+                          <div className="text-gray-300 capitalize">
+                            {pm.card_brand} •••• {pm.card_last4}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Expires {pm.card_exp_month}/{pm.card_exp_year}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={async () => {
+                          if (confirm("Remove this payment method?")) {
+                            try {
+                              await billing.deletePaymentMethod(pm.id);
+                              setPaymentMethods(
+                                paymentMethods.filter((p) => p.id !== pm.id),
+                              );
+                              trigger("success");
+                            } catch (err) {
+                              alert("Failed to remove payment method");
+                            }
+                          }
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <Button
-                  onClick={() => {
-                    // TODO: Implement Stripe Setup Intent for payment method
-                    alert(
-                      "Payment method setup coming soon! This will use Stripe Setup Intent to securely save your card for automatic invoice payments.",
-                    );
+                  onClick={async () => {
+                    setSettingUpPayment(true);
+                    try {
+                      const { client_secret } =
+                        await billing.setupPaymentMethod();
+                      // Open Stripe payment method setup
+                      // For now, show instructions to implement Stripe Elements
+                      alert(
+                        `Setup Intent created!\n\nClient Secret: ${client_secret}\n\nNext steps:\n1. Install @stripe/stripe-js\n2. Create Stripe Elements form\n3. Confirm setup with client_secret\n\nThis will be implemented with a proper Stripe Elements UI.`,
+                      );
+                      // Reload payment methods after setup
+                      const pm = await billing.listPaymentMethods();
+                      setPaymentMethods(pm);
+                    } catch (err) {
+                      alert("Failed to setup payment method");
+                    } finally {
+                      setSettingUpPayment(false);
+                    }
                   }}
+                  disabled={settingUpPayment}
                   size="sm"
                 >
-                  Add Payment Method for Auto-Pay
+                  {settingUpPayment
+                    ? "Setting up..."
+                    : "Add Payment Method for Auto-Pay"}
                 </Button>
               )}
             </div>

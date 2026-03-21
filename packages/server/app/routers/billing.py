@@ -22,6 +22,8 @@ from app.schemas.billing import (
     TopUpRequest,
     TopUpResponse,
     UsageLogResponse,
+    SetupIntentResponse,
+    PaymentMethodResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +143,99 @@ async def account_topup(
     )
 
     return TopUpResponse(checkout_url=session.url)
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/account/payment-method/setup
+# ---------------------------------------------------------------------------
+@router.post("/payment-method/setup", response_model=SetupIntentResponse)
+async def setup_payment_method(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a Stripe Setup Intent for adding a payment method."""
+    settings = get_settings()
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    # Ensure the user has a Stripe customer ID
+    if not user.stripe_customer_id:
+        customer = stripe.Customer.create(
+            email=user.email,
+            name=user.name or user.email,
+            metadata={"user_id": str(user.id)},
+        )
+        user.stripe_customer_id = customer.id
+        await db.flush()
+
+    # Create Setup Intent
+    setup_intent = stripe.SetupIntent.create(
+        customer=user.stripe_customer_id,
+        payment_method_types=["card"],
+        metadata={"user_id": str(user.id)},
+    )
+
+    return SetupIntentResponse(client_secret=setup_intent.client_secret)
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/account/payment-methods
+# ---------------------------------------------------------------------------
+@router.get("/payment-methods", response_model=list[PaymentMethodResponse])
+async def list_payment_methods(
+    user: User = Depends(get_current_user),
+):
+    """List all payment methods for the current user."""
+    settings = get_settings()
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    if not user.stripe_customer_id:
+        return []
+
+    payment_methods = stripe.PaymentMethod.list(
+        customer=user.stripe_customer_id,
+        type="card",
+    )
+
+    return [
+        PaymentMethodResponse(
+            id=pm.id,
+            card_brand=pm.card.brand,
+            card_last4=pm.card.last4,
+            card_exp_month=pm.card.exp_month,
+            card_exp_year=pm.card.exp_year,
+        )
+        for pm in payment_methods.data
+    ]
+
+
+# ---------------------------------------------------------------------------
+# DELETE /v1/account/payment-methods/{payment_method_id}
+# ---------------------------------------------------------------------------
+@router.delete("/payment-methods/{payment_method_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_payment_method(
+    payment_method_id: str,
+    user: User = Depends(get_current_user),
+):
+    """Detach a payment method from the customer."""
+    settings = get_settings()
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    try:
+        payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
+        
+        # Verify this payment method belongs to this user's customer
+        if payment_method.customer != user.stripe_customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Payment method does not belong to this user",
+            )
+        
+        stripe.PaymentMethod.detach(payment_method_id)
+    except stripe.error.InvalidRequestError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment method not found",
+        )
 
 
 # ---------------------------------------------------------------------------
