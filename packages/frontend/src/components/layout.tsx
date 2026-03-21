@@ -271,7 +271,9 @@ export function Layout() {
         <div className="p-4 border-t border-gray-800 space-y-2">
           {billingEnabled && balance !== null && (
             <div className="text-sm">
-              <span className="text-gray-400">Balance: </span>
+              <span className="text-gray-400">
+                {balance < 0 ? "Debt: " : "Balance: "}
+              </span>
               <span
                 className={
                   balance > balanceThresholds.high
@@ -283,7 +285,7 @@ export function Layout() {
                         : "text-red-400"
                 }
               >
-                ${balance.toFixed(2)}
+                ${Math.abs(balance).toFixed(2)}
               </span>
             </div>
           )}
@@ -349,7 +351,9 @@ export function Layout() {
             <div className="p-4 space-y-3">
               {billingEnabled && balance !== null && (
                 <div className="text-sm">
-                  <span className="text-gray-400">Balance: </span>
+                  <span className="text-gray-400">
+                    {balance < 0 ? "Debt: " : "Balance: "}
+                  </span>
                   <span
                     className={
                       balance > 10
@@ -361,7 +365,7 @@ export function Layout() {
                             : "text-red-400"
                     }
                   >
-                    ${balance.toFixed(2)}
+                    ${Math.abs(balance).toFixed(2)}
                   </span>
                 </div>
               )}

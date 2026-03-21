@@ -132,11 +132,17 @@ export function AccountPage() {
       {/* Balance Card — only when billing enabled */}
       {billingEnabled && balance && (
         <div className="bg-gray-800 rounded-xl p-4 md:p-6">
-          <div className="text-sm text-gray-400 mb-1">Balance</div>
+          <div className="text-sm text-gray-400 mb-1">
+            {balance.billing_type === "postpaid" && balance.balance_nzd < 0
+              ? "Current Debt"
+              : balance.billing_type === "postpaid"
+                ? "Credit"
+                : "Balance"}
+          </div>
           <div
             className={`text-4xl font-bold ${balanceColor(balance.balance_nzd)}`}
           >
-            ${balance.balance_nzd.toFixed(2)}
+            ${Math.abs(balance.balance_nzd).toFixed(2)}
           </div>
           <div className="mt-3 text-sm text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
             <span>
@@ -187,8 +193,9 @@ export function AccountPage() {
         <div className="bg-gray-800 rounded-xl p-4 md:p-6">
           <h3 className="font-medium mb-2">Usage Limit</h3>
           <p className="text-sm text-gray-400 mb-3">
-            Set a personal spending limit. You'll be blocked from making
-            requests when your balance drops below this amount.
+            {balance?.billing_type === "postpaid"
+              ? "Maximum debt allowed before service is suspended. Set as a negative number (e.g., -20 for $20 debt limit)."
+              : "Minimum balance required to continue service. You'll be blocked when your balance drops below this amount."}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-gray-400">$</span>
@@ -197,6 +204,7 @@ export function AccountPage() {
               value={limitInput}
               onChange={(e) => setLimitInput(e.target.value)}
               step="1"
+              placeholder={balance?.billing_type === "postpaid" ? "-20" : "0"}
               className="w-28"
             />
             <Button
