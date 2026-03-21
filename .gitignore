@@ -7,3 +7,4 @@ packages/server/app/schemas/__pycache__/
 packages/server/app/__pycache__/
 packages/frontend/node_modules/
 packages/frontend/dist/
+node_modules/
