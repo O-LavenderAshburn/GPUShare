@@ -1,5 +1,7 @@
 """Application configuration loaded from environment variables."""
 
+from __future__ import annotations
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

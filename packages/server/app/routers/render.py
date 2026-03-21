@@ -1,5 +1,7 @@
 """Render router — submit, list, inspect, and cancel Blender render jobs."""
 
+from __future__ import annotations
+
 import os
 import tempfile
 import uuid

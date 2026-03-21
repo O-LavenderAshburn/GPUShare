@@ -1,5 +1,7 @@
 """Billing helpers — cost calculation and ledger writes."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID

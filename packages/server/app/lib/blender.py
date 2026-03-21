@@ -1,5 +1,7 @@
 """Blender CLI wrapper for headless rendering and file sanitisation."""
 
+from __future__ import annotations
+
 import asyncio
 import os
 import tempfile

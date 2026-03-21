@@ -1,5 +1,7 @@
 """Admin-only schemas."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel, ConfigDict
 
 from .auth import UserResponse

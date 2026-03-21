@@ -1,5 +1,7 @@
 """Billing router — balance, usage, invoices, top-up, and Stripe webhooks."""
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from decimal import Decimal

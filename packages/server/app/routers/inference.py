@@ -1,5 +1,7 @@
 """OpenAI-compatible inference endpoints."""
 
+from __future__ import annotations
+
 import json
 import time
 import uuid

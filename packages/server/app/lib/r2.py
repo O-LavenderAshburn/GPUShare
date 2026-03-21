@@ -1,5 +1,7 @@
 """Cloudflare R2 storage client (S3-compatible)."""
 
+from __future__ import annotations
+
 import boto3
 from botocore.config import Config as BotoConfig
 

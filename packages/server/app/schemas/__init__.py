@@ -1,5 +1,7 @@
 """Pydantic request/response schemas for the GPU Node API."""
 
+from __future__ import annotations
+
 from .admin import (
     AdminUserResponse,
     AdjustBalanceRequest,

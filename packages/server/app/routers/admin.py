@@ -1,5 +1,7 @@
 """Admin router — user management, balance adjustments, and system stats."""
 
+from __future__ import annotations
+
 import uuid
 from decimal import Decimal
 

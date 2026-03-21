@@ -1,5 +1,7 @@
 """Ollama HTTP client with streaming and token counting."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncGenerator
 

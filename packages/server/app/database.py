@@ -1,5 +1,7 @@
 """Async SQLAlchemy engine, session factory, and declarative base."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
 from functools import lru_cache
 
