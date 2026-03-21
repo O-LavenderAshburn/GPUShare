@@ -35,7 +35,6 @@ async def _user_to_response(db: AsyncSession, user: User) -> AdminUserResponse:
         name=user.name,
         status=user.status,
         role=user.role,
-        stripe_customer_id=user.stripe_customer_id,
         billing_type=user.billing_type,
         hard_limit_nzd=float(user.hard_limit_nzd),
         services_enabled=user.services_enabled,

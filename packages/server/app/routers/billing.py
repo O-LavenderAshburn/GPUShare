@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.deps import get_current_user
+from app.routers.auth import get_current_user
 from app.lib.billing import get_balance, get_this_month_usage, write_ledger_entry
 from app.models import CreditLedger, Invoice, UsageLog, User
 from app.schemas.billing import (

@@ -49,7 +49,7 @@ async def create_chat_completion(
     settings = get_settings()
 
     # Check user balance against hard limit
-    if not await check_balance_ok(db, user):
+    if not await check_balance_ok(db, user.id, user.hard_limit_nzd):
         raise HTTPException(
             status_code=402,
             detail="Insufficient balance. Please top up your account.",
@@ -88,7 +88,7 @@ async def create_chat_completion(
     output_tokens = count_tokens(assistant_content)
 
     # Calculate cost and record usage
-    cost = calculate_inference_cost(input_tokens, output_tokens)
+    cost, kwh = calculate_inference_cost(input_tokens, output_tokens)
 
     usage_log = UsageLog(
         user_id=user.id,
@@ -96,6 +96,7 @@ async def create_chat_completion(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_nzd=cost,
+        kwh=kwh,
     )
     db.add(usage_log)
 
@@ -175,7 +176,7 @@ async def _stream_response(
 
     # After stream ends, record usage
     output_tokens = count_tokens(collected_content)
-    cost = calculate_inference_cost(input_tokens, output_tokens)
+    cost, kwh = calculate_inference_cost(input_tokens, output_tokens)
 
     usage_log = UsageLog(
         user_id=user.id,
@@ -183,6 +184,7 @@ async def _stream_response(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cost_nzd=cost,
+        kwh=kwh,
     )
     db.add(usage_log)
 
