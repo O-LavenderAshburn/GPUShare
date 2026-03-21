@@ -1,0 +1,35 @@
+# GPU override with Docker-managed Ollama — for Linux with NVIDIA Container Toolkit:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Also set OLLAMA_HOST=http://ollama:11434 in .env when using this.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  fastapi:
+    depends_on:
+      - ollama
+
+  render-worker:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  ollama-data:
