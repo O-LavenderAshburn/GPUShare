@@ -23,10 +23,20 @@ async def lifespan(app: FastAPI):
 settings = get_settings()
 
 app = FastAPI(
-    title=settings.NODE_NAME,
-    description="GPU compute sharing — AI inference and 3D rendering at electricity cost.",
+    title="GPUShare API",
+    description="GPU compute sharing platform — AI inference and 3D rendering at electricity cost. Supports OpenAI-compatible chat completions, Blender rendering, billing, and user management.",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    contact={
+        "name": "GPUShare",
+        "url": "https://gpushare.app",
+    },
+    license_info={
+        "name": "MIT",
+    },
 )
 
 app.add_middleware(

@@ -9,6 +9,7 @@ import type {
   InvoiceResponse,
 } from "@shared/types/billing";
 import { Button, Input } from "../components/ui";
+import { PaymentMethodSetup } from "../components/PaymentMethodSetup";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -37,6 +38,9 @@ export function AccountPage() {
     }>
   >([]);
   const [settingUpPayment, setSettingUpPayment] = useState(false);
+  const [setupClientSecret, setSetupClientSecret] = useState<string | null>(
+    null,
+  );
 
   const billingEnabled =
     (health?.integrations?.billing && health?.integrations?.stripe) ?? false;
@@ -313,14 +317,7 @@ export function AccountPage() {
                     try {
                       const { client_secret } =
                         await billing.setupPaymentMethod();
-                      // Open Stripe payment method setup
-                      // For now, show instructions to implement Stripe Elements
-                      alert(
-                        `Setup Intent created!\n\nClient Secret: ${client_secret}\n\nNext steps:\n1. Install @stripe/stripe-js\n2. Create Stripe Elements form\n3. Confirm setup with client_secret\n\nThis will be implemented with a proper Stripe Elements UI.`,
-                      );
-                      // Reload payment methods after setup
-                      const pm = await billing.listPaymentMethods();
-                      setPaymentMethods(pm);
+                      setSetupClientSecret(client_secret);
                     } catch (err) {
                       alert("Failed to setup payment method");
                     } finally {
@@ -713,6 +710,23 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
             <p className="text-sm text-gray-500">No invoices</p>
           )}
         </div>
+      )}
+
+      {/* Payment Method Setup Modal */}
+      {setupClientSecret && (
+        <PaymentMethodSetup
+          clientSecret={setupClientSecret}
+          onSuccess={async () => {
+            setSetupClientSecret(null);
+            trigger("success");
+            // Reload payment methods
+            const pm = await billing.listPaymentMethods();
+            setPaymentMethods(pm);
+          }}
+          onCancel={() => {
+            setSetupClientSecret(null);
+          }}
+        />
       )}
     </div>
   );
