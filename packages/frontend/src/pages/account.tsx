@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useWebHaptics } from '../lib/haptics';
 import { auth as authApi, billing, getHealth } from '../lib/api';
 import type { HealthResponse } from '../lib/api';
 import type { UserResponse, ApiKeyResponse } from '@shared/types/auth';
 import type { BalanceResponse, UsageLogResponse, InvoiceResponse } from '@shared/types/billing';
 
 export function AccountPage() {
+  const { trigger } = useWebHaptics();
   const [user, setUser] = useState<UserResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [usage, setUsage] = useState<UsageLogResponse[]>([]);
@@ -44,10 +46,12 @@ export function AccountPage() {
       setRevealedKey(res.key);
       setNewKeyLabel('');
       authApi.listApiKeys().then(setApiKeys).catch(() => {});
+      trigger('success');
     } catch {}
   }
 
   async function handleRevokeKey(id: string) {
+    trigger('buzz');
     await authApi.revokeApiKey(id).catch(() => {});
     authApi.listApiKeys().then(setApiKeys).catch(() => {});
   }
@@ -64,6 +68,7 @@ export function AccountPage() {
     try {
       const res = await authApi.updateMyLimit(Number(limitInput));
       setLimitInput(String(res.hard_limit_nzd));
+      trigger('success');
     } catch {}
     setLimitSaving(false);
   }
@@ -78,7 +83,7 @@ export function AccountPage() {
   if (loading) return <div className="p-6 text-gray-500">Loading...</div>;
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-6 space-y-6 max-w-5xl pb-20 md:pb-0">
       <h2 className="text-lg font-semibold">Account</h2>
 
       {/* Balance Card — only when billing enabled */}
@@ -167,7 +172,7 @@ export function AccountPage() {
           <div className="bg-green-900/30 border border-green-700 rounded-lg p-3">
             <div className="text-xs text-green-300 mb-1">Copy this key now - it won't be shown again:</div>
             <code className="text-sm text-green-200 break-all">{revealedKey}</code>
-            <button onClick={() => { navigator.clipboard.writeText(revealedKey); }} className="ml-2 text-xs text-green-400 hover:text-green-300">Copy</button>
+            <button onClick={() => { navigator.clipboard.writeText(revealedKey); trigger('nudge'); }} className="ml-2 text-xs text-green-400 hover:text-green-300">Copy</button>
           </div>
         )}
 

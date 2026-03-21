@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useWebHaptics } from '../lib/haptics';
 import { auth as authApi } from '../lib/api';
 import { setToken } from '../lib/auth';
 import { router } from '../router';
 
 export function LoginPage() {
+  const { trigger } = useWebHaptics();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,8 +22,10 @@ export function LoginPage() {
         ? await authApi.signup({ email, password, name: name || undefined })
         : await authApi.login({ email, password });
       setToken(res.access_token);
+      trigger('success');
       router.navigate({ to: '/chat' });
     } catch (err) {
+      trigger('error');
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
@@ -29,7 +33,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4 pb-20 md:pb-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold">GPU Node</h1>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useWebHaptics } from '../lib/haptics';
 import { admin, getHealth } from '../lib/api';
 import type { HealthResponse, PowerData } from '../lib/api';
 import { parseToken } from '../lib/auth';
@@ -99,7 +100,7 @@ export function AdminPage() {
   const integrations = getIntegrations(health);
 
   return (
-    <div className="p-6 space-y-8 max-w-6xl">
+    <div className="p-6 space-y-8 max-w-6xl pb-20 md:pb-0">
       <h2 className="text-lg font-semibold">Admin Dashboard</h2>
 
       {/* Stats */}
@@ -280,6 +281,7 @@ function UserRow({
   onToggle: () => void;
   onRefresh: () => void;
 }) {
+  const { trigger } = useWebHaptics();
   const [status, setStatus] = useState(user.status);
   const [role, setRole] = useState(user.role);
   const [limit, setLimit] = useState(String(user.hard_limit_nzd));
@@ -297,6 +299,7 @@ function UserRow({
       services_enabled: services.split(',').map(s => s.trim()).filter(Boolean),
     };
     await admin.updateUser(user.id, update).catch(() => {});
+    trigger('success');
     setSaving(false);
     onRefresh();
   }
@@ -310,6 +313,11 @@ function UserRow({
   }
 
   async function handleQuickAction(newStatus: string) {
+    if (newStatus === 'suspended') {
+      trigger('buzz');
+    } else {
+      trigger('success');
+    }
     await admin.updateUser(user.id, { status: newStatus }).catch(() => {});
     onRefresh();
   }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useWebHaptics } from '../lib/haptics';
 import { render } from '../lib/api';
 import type { RenderJobResponse, RenderJobCreateRequest } from '@shared/types/render';
 
@@ -10,6 +11,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export function RenderPage() {
+  const { trigger } = useWebHaptics();
   const [jobs, setJobs] = useState<RenderJobResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -56,6 +58,7 @@ export function RenderPage() {
         output_format: outputFormat,
       };
       await render.createJob(file, params);
+      trigger('success');
       fetchJobs();
       if (fileRef.current) fileRef.current.value = '';
     } catch (err) {
@@ -66,13 +69,14 @@ export function RenderPage() {
   }
 
   function handleCancel(id: string) {
+    trigger('buzz');
     render.cancelJob(id).then(fetchJobs).catch(() => {});
   }
 
   const totalFrames = (j: RenderJobResponse) => j.frame_end - j.frame_start + 1;
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl">
+    <div className="p-6 space-y-6 max-w-6xl pb-20 md:pb-0">
       <h2 className="text-lg font-semibold">Render Jobs</h2>
 
       <form onSubmit={handleSubmit} className="bg-gray-800 rounded-xl p-6 space-y-4">

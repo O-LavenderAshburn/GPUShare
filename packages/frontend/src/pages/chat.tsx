@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useWebHaptics } from '../lib/haptics';
 import { inference, getHealth } from '../lib/api';
 import type { ChatMessage } from '@shared/types/inference';
 import type { ModelInfo } from '@shared/types/inference';
@@ -37,6 +38,7 @@ function deriveTitle(messages: ChatMessage[]): string {
 }
 
 export function ChatPage() {
+  const { trigger } = useWebHaptics();
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [chats, setChats] = useState<Chat[]>(loadChats);
@@ -80,6 +82,7 @@ export function ChatPage() {
   }, []);
 
   function createNewChat() {
+    trigger('nudge');
     const chat: Chat = {
       id: generateId(),
       title: 'New Chat',
@@ -93,6 +96,7 @@ export function ChatPage() {
   }
 
   function deleteChat(chatId: string) {
+    trigger('buzz');
     setChats(prev => prev.filter(c => c.id !== chatId));
     if (activeChatId === chatId) {
       const remaining = chats.filter(c => c.id !== chatId);
@@ -103,6 +107,7 @@ export function ChatPage() {
   async function handleSend() {
     const text = input.trim();
     if (!text || !selectedModel || streaming) return;
+    trigger('nudge');
 
     // Create chat if none active
     let chatId = activeChatId;
@@ -151,7 +156,9 @@ export function ChatPage() {
           }));
         }
       }
+      trigger('success');
     } catch (err) {
+      trigger('error');
       const errorContent = err instanceof Error ? err.message : 'Error generating response';
       updateChat(chatId!, c => ({
         ...c,
@@ -169,10 +176,12 @@ export function ChatPage() {
     }
   }
 
+  const [chatListOpen, setChatListOpen] = useState(false);
+
   return (
-    <div className="flex h-screen">
-      {/* Sidebar — Chat List */}
-      <div className="w-64 border-r border-gray-800 flex flex-col bg-gray-900/50">
+    <div className="flex h-full">
+      {/* Desktop Sidebar -- Chat List */}
+      <div className="hidden md:flex w-64 border-r border-gray-800 flex-col bg-gray-900/50">
         <div className="p-3">
           <button
             onClick={createNewChat}
@@ -208,10 +217,55 @@ export function ChatPage() {
         </div>
       </div>
 
+      {/* Mobile Chat List Slide-over */}
+      {chatListOpen && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/60 md:hidden" onClick={() => setChatListOpen(false)} />
+          <div className="fixed inset-y-0 left-0 z-50 w-72 bg-gray-950 flex flex-col md:hidden">
+            <div className="p-3 border-b border-gray-800 flex items-center justify-between">
+              <span className="text-sm font-semibold">Chats</span>
+              <button onClick={() => setChatListOpen(false)} className="text-gray-400 hover:text-white text-xs">Close</button>
+            </div>
+            <div className="p-3">
+              <button
+                onClick={() => { createNewChat(); setChatListOpen(false); }}
+                className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              >
+                + New Chat
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {chats.map(chat => (
+                <div
+                  key={chat.id}
+                  onClick={() => { setActiveChatId(chat.id); setChatListOpen(false); }}
+                  className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer text-sm transition-colors ${
+                    chat.id === activeChatId
+                      ? 'bg-gray-700/50 text-white'
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+                  }`}
+                >
+                  <span className="flex-1 truncate">{chat.title}</span>
+                </div>
+              ))}
+              {chats.length === 0 && (
+                <div className="px-3 py-4 text-xs text-gray-600 text-center">No chats yet</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         <div className="border-b border-gray-800 p-4 flex items-center gap-4">
-          <h2 className="text-lg font-semibold">
+          <button
+            onClick={() => setChatListOpen(true)}
+            className="md:hidden text-gray-400 hover:text-white text-sm font-medium"
+          >
+            Chats
+          </button>
+          <h2 className="text-lg font-semibold hidden md:block">
             {activeChat ? activeChat.title : 'Chat'}
           </h2>
           <select
@@ -264,7 +318,7 @@ export function ChatPage() {
           <div ref={messagesEnd} />
         </div>
 
-        <div className="border-t border-gray-800 p-4">
+        <div className="border-t border-gray-800 p-4 mb-16 md:mb-0">
           <div className="flex gap-2 max-w-4xl mx-auto">
             <textarea
               value={input}
