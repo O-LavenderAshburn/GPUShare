@@ -18,11 +18,12 @@ export interface UserResponse {
   id: string;
   email: string;
   name: string | null;
-  status: 'pending' | 'active' | 'suspended';
-  role: 'user' | 'admin';
-  billing_type: 'postpaid' | 'prepaid';
+  status: "pending" | "active" | "suspended";
+  role: "user" | "admin";
+  billing_type: "postpaid" | "prepaid";
   hard_limit_nzd: number;
   services_enabled: string[];
+  stripe_customer_id: string | null;
   created_at: string;
 }
 

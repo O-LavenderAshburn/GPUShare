@@ -188,6 +188,90 @@ export function AccountPage() {
         </div>
       )}
 
+      {/* Billing Information for Postpaid Users */}
+      {billingEnabled && balance?.billing_type === "postpaid" && (
+        <div className="bg-gray-800 rounded-xl p-4 md:p-6">
+          <h3 className="font-medium mb-3">Billing & Payments</h3>
+
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium text-gray-300 mb-2">
+                Invoice Schedule
+              </h4>
+              <p className="text-sm text-gray-400">
+                Invoices are automatically generated on the{" "}
+                <strong className="text-white">1st of each month</strong> for
+                the previous month's usage. You'll receive an email with your
+                invoice and payment instructions.
+              </p>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-medium text-gray-300 mb-2">
+                Payment Methods
+              </h4>
+              <p className="text-sm text-gray-400 mb-3">
+                You can pay invoices manually via the emailed link, or set up
+                automatic payments by adding a payment method below.
+              </p>
+
+              {user?.stripe_customer_id ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <svg
+                      className="w-4 h-4 text-green-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span className="text-gray-300">
+                      Payment method on file
+                    </span>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      // TODO: Implement payment method management
+                      alert("Payment method management coming soon!");
+                    }}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    Manage Payment Method
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => {
+                    // TODO: Implement Stripe Setup Intent for payment method
+                    alert(
+                      "Payment method setup coming soon! This will use Stripe Setup Intent to securely save your card for automatic invoice payments.",
+                    );
+                  }}
+                  size="sm"
+                >
+                  Add Payment Method for Auto-Pay
+                </Button>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-gray-700">
+              <p className="text-xs text-gray-500">
+                Next invoice:{" "}
+                <strong className="text-gray-400">1st of next month</strong> •
+                Covers usage from start to end of current month
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Usage Limit — user can set their own */}
       {billingEnabled && user && (
         <div className="bg-gray-800 rounded-xl p-4 md:p-6">
