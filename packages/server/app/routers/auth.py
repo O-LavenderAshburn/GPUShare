@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +30,6 @@ import resend
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
-limiter = Limiter(key_func=get_remote_address)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 JWT_ALGORITHM = "HS256"
@@ -53,6 +51,34 @@ def _create_access_token(user: User, secret: str) -> str:
         "exp": now + timedelta(days=JWT_EXPIRY_DAYS),
     }
     return jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
+
+
+def _get_client_ip(request: Request) -> str:
+    """Resolve the originating client IP, accounting for common proxy headers."""
+    cf_connecting_ip = request.headers.get("cf-connecting-ip")
+    if cf_connecting_ip:
+        return cf_connecting_ip.strip()
+
+    x_forwarded_for = request.headers.get("x-forwarded-for")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",", 1)[0].strip()
+
+    x_real_ip = request.headers.get("x-real-ip")
+    if x_real_ip:
+        return x_real_ip.strip()
+
+    if request.client and request.client.host:
+        return request.client.host
+
+    return "unknown"
+
+
+def _self_signup_allowed(*, invite_only: bool) -> bool:
+    """Allow public signup only when the node is open."""
+    return not invite_only
+
+
+limiter = Limiter(key_func=_get_client_ip)
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +192,7 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
 
 @router.post("/signup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
+@limiter.limit("2/minute")
 async def signup(
     request: Request,
     body: SignupRequest,
@@ -174,11 +201,33 @@ async def signup(
 ):
     """Register a new user account."""
 
-    # Check invite-only gate
-    if settings.INVITE_ONLY:
-        # For now, invite-only just means require_approval is enforced.
-        # A future iteration could check an invite code.
-        pass
+    # Serialize initial signup so two concurrent requests cannot both race for bootstrap.
+    await db.execute(select(func.pg_advisory_xact_lock(0x47505553)))
+
+    # Determine if this is the very first user.
+    count_result = await db.execute(select(func.count()).select_from(User))
+    user_count = count_result.scalar() or 0
+    is_first_user = user_count == 0
+
+    if is_first_user:
+        expected_bootstrap_token = settings.INITIAL_ADMIN_BOOTSTRAP_TOKEN.strip()
+        if not expected_bootstrap_token:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Initial admin bootstrap is not configured. Set INITIAL_ADMIN_BOOTSTRAP_TOKEN before creating the first account.",
+            )
+        if not body.bootstrap_token or not secrets.compare_digest(
+            body.bootstrap_token, expected_bootstrap_token
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="A valid bootstrap token is required to create the first admin account.",
+            )
+    elif not _self_signup_allowed(invite_only=settings.INVITE_ONLY):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-signup is disabled on this server. Use an invite link or ask an admin for access.",
+        )
 
     # Check for duplicate email
     result = await db.execute(select(User).where(User.email == body.email))
@@ -187,11 +236,6 @@ async def signup(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
-
-    # Determine if this is the very first user (auto-admin)
-    count_result = await db.execute(select(func.count()).select_from(User))
-    user_count = count_result.scalar()
-    is_first_user = user_count == 0
 
     user = User(
         email=body.email,
