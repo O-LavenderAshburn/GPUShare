@@ -713,7 +713,7 @@ export function ChatPage() {
                       <span className="animate-pulse text-[#B1ADA1]">
                         {queuePosition !== null && queuePosition > 0
                           ? `Position ${queuePosition} in queue...`
-                          : `Generating\u2026 ${elapsedSeconds}s`}
+                          : `Generating… ${elapsedSeconds}s`}
                       </span>
                     ) : (
                       <ReactMarkdown
@@ -766,7 +766,7 @@ export function ChatPage() {
                 {isLastAssistant && streaming && msg.content !== "" && (
                   <div className="flex justify-start mt-1">
                     <span className="text-[10px] text-[#B1ADA1] animate-pulse">
-                      Generating\u2026 {elapsedSeconds}s
+                      Generating… {elapsedSeconds}s
                     </span>
                   </div>
                 )}
