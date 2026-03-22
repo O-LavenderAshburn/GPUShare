@@ -4,7 +4,7 @@
   "private": true,
   "description": "GPU compute sharing platform — AI inference and 3D rendering at electricity cost",
   "scripts": {
-    "dev": "pnpm run --parallel dev:frontend dev:server",
+    "dev": "pnpm run dev:frontend & pnpm run dev:server",
     "dev:frontend": "pnpm --filter gpushare-frontend dev",
     "dev:server": "docker compose up",
     "build": "pnpm --filter gpushare-frontend build",
