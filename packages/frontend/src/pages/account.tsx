@@ -14,6 +14,65 @@ import { fmtUsd } from "../lib/format";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`bg-[#E5E1DB] rounded animate-pulse ${className}`}
+    />
+  );
+}
+
+function AccountSkeleton() {
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-5xl pb-20 md:pb-0 w-full">
+      <SkeletonBlock className="h-6 w-32" />
+
+      {/* Balance card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-3 w-16 mb-2" />
+        <SkeletonBlock className="h-9 w-28 mb-3" />
+        <div className="flex gap-4">
+          <SkeletonBlock className="h-3 w-28" />
+          <SkeletonBlock className="h-3 w-20" />
+          <SkeletonBlock className="h-3 w-24" />
+        </div>
+      </div>
+
+      {/* Usage limit card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-4 w-24 mb-2" />
+        <SkeletonBlock className="h-3 w-72 mb-3" />
+        <SkeletonBlock className="h-9 w-48" />
+      </div>
+
+      {/* Profile card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-4 w-16 mb-3" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-3 w-32" />
+          ))}
+        </div>
+      </div>
+
+      {/* API Keys card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB] space-y-4">
+        <SkeletonBlock className="h-4 w-20" />
+        <SkeletonBlock className="h-9 w-full" />
+        <SkeletonBlock className="h-3 w-24" />
+      </div>
+
+      {/* Usage Log card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB] space-y-4">
+        <SkeletonBlock className="h-4 w-24" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonBlock key={i} className="h-3 w-full" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AccountPage() {
   const { trigger } = useWebHaptics();
   const [user, setUser] = useState<UserResponse | null>(null);
@@ -166,7 +225,7 @@ export function AccountPage() {
     return "text-[#C62828]";
   }
 
-  if (loading) return <div className="p-6 text-[#B1ADA1]">Loading...</div>;
+  if (loading) return <AccountSkeleton />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl pb-20 md:pb-0 w-full">

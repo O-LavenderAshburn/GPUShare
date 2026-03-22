@@ -123,7 +123,7 @@ export function AdminPage() {
     fetchData();
   }, []);
 
-  if (loading) return <div className="p-6 text-[#B1ADA1]">Loading...</div>;
+  if (loading) return <AdminSkeleton />;
 
   const integrations = getIntegrations(health);
 
@@ -218,6 +218,85 @@ export function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`bg-[#E5E1DB] rounded animate-pulse ${className}`}
+    />
+  );
+}
+
+function AdminSkeleton() {
+  return (
+    <div className="p-6 space-y-8 max-w-6xl pb-20 md:pb-0">
+      <SkeletonBlock className="h-6 w-48" />
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            className="bg-white rounded-xl p-4 border border-[#E5E1DB]"
+          >
+            <SkeletonBlock className="h-3 w-16 mb-2" />
+            <SkeletonBlock className="h-7 w-20" />
+          </div>
+        ))}
+      </div>
+
+      {/* Server status */}
+      <div className="bg-white rounded-xl p-5 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-4 w-24 mb-3" />
+        <SkeletonBlock className="h-3 w-64" />
+      </div>
+
+      {/* Integrations */}
+      <div>
+        <SkeletonBlock className="h-4 w-24 mb-3" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="bg-white rounded-xl p-4 border border-[#E5E1DB]"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <SkeletonBlock className="h-4 w-20" />
+                <SkeletonBlock className="h-3 w-16" />
+              </div>
+              <SkeletonBlock className="h-3 w-full mb-1" />
+              <SkeletonBlock className="h-3 w-3/4" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Invite links */}
+      <div>
+        <SkeletonBlock className="h-4 w-24 mb-3" />
+        <div className="bg-white rounded-xl p-5 border border-[#E5E1DB] space-y-3">
+          <SkeletonBlock className="h-3 w-72" />
+          <SkeletonBlock className="h-9 w-full" />
+        </div>
+      </div>
+
+      {/* Users table */}
+      <div>
+        <SkeletonBlock className="h-4 w-16 mb-3" />
+        <div className="bg-white rounded-xl overflow-hidden border border-[#E5E1DB]">
+          <div className="px-4 py-3 border-b border-[#E5E1DB]">
+            <SkeletonBlock className="h-3 w-full" />
+          </div>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="px-4 py-3 border-b border-[#EDEBE6]">
+              <SkeletonBlock className="h-3 w-full" />
+            </div>
+          ))}
         </div>
       </div>
     </div>
