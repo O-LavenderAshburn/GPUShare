@@ -119,4 +119,4 @@ async def check_balance_ok(
 ) -> bool:
     """Return True if user balance is above their hard limit."""
     balance = await get_balance(db, user_id)
-    return balance > hard_limit
+    return balance >= hard_limit
