@@ -240,7 +240,7 @@ export function Layout() {
   const currentPath = routerState.location.pathname;
 
   return (
-    <div className="flex min-h-screen bg-gray-900 text-white overflow-x-hidden max-w-full">
+    <div className="flex h-screen bg-gray-900 text-white overflow-hidden max-w-full">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-gray-950 flex-col border-r border-gray-800 fixed left-0 top-0 bottom-0">
         <div className="p-6 border-b border-gray-800">
