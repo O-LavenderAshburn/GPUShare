@@ -59,6 +59,7 @@ export interface ModelInfo {
   object: string;
   owned_by: string;
   cost_per_million_tokens: number;
+  loaded: boolean;
 }
 
 export interface ModelsResponse {

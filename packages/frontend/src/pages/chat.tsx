@@ -435,7 +435,7 @@ export function ChatPage() {
             <SelectContent>
               {models.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
-                  {m.id} ({m.owned_by === "local" ? "Local" : "Cloud"})
+                  {m.id} ({m.owned_by === "local" ? (m.loaded ? "Loaded" : "Local") : "Cloud"})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -450,6 +450,11 @@ export function ChatPage() {
                 >
                   {m.owned_by === "local" ? "Local GPU" : "OpenRouter"}
                 </span>
+                {m.owned_by === "local" && !m.loaded && (
+                  <span className="px-1.5 py-0.5 rounded bg-yellow-900/50 text-yellow-400 whitespace-nowrap">
+                    Not loaded — first message will be slower
+                  </span>
+                )}
                 {m.cost_per_million_tokens > 0 &&
                   (billingEnabled || m.owned_by !== "local") && (
                     <span className="text-gray-500 whitespace-nowrap">

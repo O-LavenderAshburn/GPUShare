@@ -46,6 +46,7 @@ class ModelInfo(BaseModel):
     object: str = "model"
     owned_by: str = "local"
     cost_per_million_tokens: float
+    loaded: bool = False
 
 
 class ModelsResponse(BaseModel):

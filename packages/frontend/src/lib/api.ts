@@ -238,12 +238,16 @@ export const inference = {
         if (payload === "[DONE]") return;
         try {
           const parsed = JSON.parse(payload);
+          if ("error" in parsed) {
+            throw new Error(parsed.error);
+          }
           if ("queue_position" in parsed) {
             yield parsed as QueuePositionEvent;
           } else {
             yield parsed as ChatCompletionChunk;
           }
-        } catch {
+        } catch (e) {
+          if (e instanceof Error && e.message) throw e;
           // skip malformed chunks
         }
       }

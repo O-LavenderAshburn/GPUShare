@@ -27,6 +27,16 @@ async def list_models() -> list[str]:
         return [m["name"] for m in data.get("models", [])]
 
 
+async def list_running_models() -> list[str]:
+    """Return list of model names currently loaded in VRAM (from /api/ps)."""
+    settings = get_settings()
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{settings.OLLAMA_HOST}/api/ps")
+        resp.raise_for_status()
+        data = resp.json()
+        return [m["name"] for m in data.get("models", [])]
+
+
 async def chat_completion(
     model: str,
     messages: list[dict],

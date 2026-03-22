@@ -21,7 +21,7 @@ from app.lib.billing import (
     get_inference_cost_per_token,
     write_ledger_entry,
 )
-from app.lib.ollama import chat_completion as ollama_chat, chat_completion_stream as ollama_stream, count_tokens, list_models as ollama_list_models
+from app.lib.ollama import chat_completion as ollama_chat, chat_completion_stream as ollama_stream, count_tokens, list_models as ollama_list_models, list_running_models as ollama_list_running_models
 from app.lib.openrouter import (
     chat_completion as openrouter_chat,
     chat_completion_stream as openrouter_stream,
@@ -218,44 +218,50 @@ async def _stream_response(
         # --- Stream the completion ---
         stream_fn = openrouter_stream if use_openrouter else ollama_stream
 
-        async for chunk in stream_fn(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        ):
-            if use_openrouter:
-                # Capture usage from the final chunk (sent when stream_options.include_usage is set)
-                usage = chunk.get("usage")
-                if usage:
-                    or_prompt_tokens = usage.get("prompt_tokens")
-                    or_completion_tokens = usage.get("completion_tokens")
-                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                done = chunk.get("choices", [{}])[0].get("finish_reason") is not None
-            else:
-                content = chunk.get("message", {}).get("content", "")
-                done = chunk.get("done", False)
+        try:
+            async for chunk in stream_fn(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                if use_openrouter:
+                    # Capture usage from the final chunk (sent when stream_options.include_usage is set)
+                    usage = chunk.get("usage")
+                    if usage:
+                        or_prompt_tokens = usage.get("prompt_tokens")
+                        or_completion_tokens = usage.get("completion_tokens")
+                    content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    done = chunk.get("choices", [{}])[0].get("finish_reason") is not None
+                else:
+                    content = chunk.get("message", {}).get("content", "")
+                    done = chunk.get("done", False)
 
-            if content:
-                collected_content += content
+                if content:
+                    collected_content += content
 
-            finish_reason = "stop" if done else None
+                finish_reason = "stop" if done else None
 
-            sse_chunk = {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"content": content} if content else {},
-                        "finish_reason": finish_reason,
-                    }
-                ],
-            }
+                sse_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content} if content else {},
+                            "finish_reason": finish_reason,
+                        }
+                    ],
+                }
 
-            yield f"data: {json.dumps(sse_chunk)}\n\n"
+                yield f"data: {json.dumps(sse_chunk)}\n\n"
+        except Exception as exc:
+            # Send error as an SSE event so the client gets a message instead of a broken stream
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         # --- Record usage ---
         # Prefer OpenRouter's reported token counts over local tiktoken estimates
@@ -312,12 +318,19 @@ async def list_models(
     except Exception:
         available = []
 
+    # Which models are currently in VRAM (fast to infer)
+    try:
+        running = set(await ollama_list_running_models())
+    except Exception:
+        running = set()
+
     local_cost = get_inference_cost_per_token()
     for model_name in available:
         models.append(ModelInfo(
             id=model_name,
             owned_by="local",
             cost_per_million_tokens=float(local_cost * Decimal("1000000")) if settings.BILLING_ENABLED else 0,
+            loaded=model_name in running,
         ))
 
     # OpenRouter models
