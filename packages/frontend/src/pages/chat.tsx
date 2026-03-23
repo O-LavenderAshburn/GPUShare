@@ -53,8 +53,38 @@ function loadChats(): Chat[] {
   }
 }
 
+function stripImageData(chats: Chat[]): Chat[] {
+  return chats.map((chat) => ({
+    ...chat,
+    messages: chat.messages.map((msg) => {
+      if (typeof msg.content === "string") return msg;
+      return {
+        ...msg,
+        content: msg.content.map((part) =>
+          part.type === "image_url"
+            ? { type: "image_url" as const, image_url: { url: "[image not stored]" } }
+            : part,
+        ),
+      };
+    }),
+  }));
+}
+
 function saveChats(chats: Chat[]) {
-  localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+  try {
+    localStorage.setItem(CHATS_KEY, JSON.stringify(stripImageData(chats)));
+  } catch {
+    // localStorage quota exceeded — save without assistant message content as fallback
+    try {
+      const trimmed = stripImageData(chats).map((c) => ({
+        ...c,
+        messages: c.messages.filter((m) => m.role !== "assistant"),
+      }));
+      localStorage.setItem(CHATS_KEY, JSON.stringify(trimmed));
+    } catch {
+      // nothing more we can do
+    }
+  }
 }
 
 function generateId() {
