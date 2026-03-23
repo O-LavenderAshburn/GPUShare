@@ -20,6 +20,23 @@ def is_openrouter_model(model: str) -> bool:
     return "/" in model
 
 
+_STATUS_MESSAGES: dict[int, str] = {
+    401: "OpenRouter API key is invalid or missing.",
+    402: "Your OpenRouter account has insufficient credits.",
+    429: "OpenRouter rate limit reached — please try again in a moment.",
+    503: "OpenRouter is temporarily unavailable — please try again later.",
+}
+
+
+def _friendly_error(exc: httpx.HTTPStatusError) -> RuntimeError:
+    """Convert an httpx HTTP error into a user-friendly RuntimeError."""
+    msg = _STATUS_MESSAGES.get(
+        exc.response.status_code,
+        f"OpenRouter returned an error ({exc.response.status_code}).",
+    )
+    return RuntimeError(msg)
+
+
 async def chat_completion(
     model: str,
     messages: list[dict],
@@ -45,7 +62,10 @@ async def chat_completion(
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise _friendly_error(exc) from None
         return resp.json()
 
 
@@ -75,7 +95,10 @@ async def chat_completion_stream(
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         async with client.stream("POST", f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers) as resp:
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise _friendly_error(exc) from None
             async for line in resp.aiter_lines():
                 line = line.strip()
                 if not line.startswith("data: "):
