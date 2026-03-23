@@ -13,7 +13,7 @@ class ContentPart(BaseModel):
 
 class ChatMessage(BaseModel):
     role: str
-    content: str | list[ContentPart]
+    content: list[ContentPart] | str  # list first so JSON arrays match without coercion
 
 
 class ChatCompletionRequest(BaseModel):
@@ -53,6 +53,7 @@ class ModelInfo(BaseModel):
     owned_by: str = "local"
     cost_per_million_tokens: float
     loaded: bool = False
+    vision_support: bool = False
 
 
 class ModelsResponse(BaseModel):

@@ -168,6 +168,14 @@ export function ChatPage() {
     if (activeChat && activeChat.model) setSelectedModel(activeChat.model);
   }, [activeChatId]);
 
+  // Drop image attachments if user switches to a model without vision support
+  useEffect(() => {
+    const supportsVision = !!models.find((m) => m.id === selectedModel)?.vision_support;
+    if (!supportsVision) {
+      setAttachments((prev) => prev.filter((a) => !a.mimeType.startsWith("image/")));
+    }
+  }, [selectedModel, models]);
+
   // Elapsed time timer during streaming
   useEffect(() => {
     if (streaming) {
@@ -262,7 +270,11 @@ export function ChatPage() {
   function handleFileSelect(files: FileList) {
     const remaining = 5 - attachments.length;
     if (remaining <= 0) return;
-    const toAdd = Array.from(files).slice(0, remaining);
+    const supportsVision = !!models.find((m) => m.id === selectedModel)?.vision_support;
+    const filtered = Array.from(files).filter(
+      (f) => supportsVision || !f.type.startsWith("image/"),
+    );
+    const toAdd = filtered.slice(0, remaining);
     const promises = toAdd.map(
       (file) =>
         new Promise<Attachment>((resolve, reject) => {
@@ -532,6 +544,17 @@ export function ChatPage() {
     lastMsg.content !== "";
 
   // Model badge helpers
+  const currentModelSupportsVision = !!models.find((m) => m.id === selectedModel)?.vision_support;
+
+  function getVisionIcon() {
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#5E35B1]" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <title>Supports image input</title>
+        <path d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15A1.5 1.5 0 0119.5 21H4.5A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3zm6.75 6.75a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+      </svg>
+    );
+  }
+
   function getModelBadge(m: ModelInfo) {
     if (m.owned_by === "local") {
       return (
@@ -754,6 +777,7 @@ export function ChatPage() {
                     {m.id}
                     {getModelBadge(m)}
                     {getColdStartBadge(m)}
+                    {m.vision_support && getVisionIcon()}
                   </span>
                 </SelectItem>
               ))}
@@ -1014,7 +1038,11 @@ export function ChatPage() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept="image/*,text/*,.py,.js,.ts,.tsx,.jsx,.json,.csv,.md,.txt,.log,.yaml,.yml,.toml,.xml,.html,.css,.sh,.env"
+                accept={
+                  currentModelSupportsVision
+                    ? "image/*,text/*,.py,.js,.ts,.tsx,.jsx,.json,.csv,.md,.txt,.log,.yaml,.yml,.toml,.xml,.html,.css,.sh,.env"
+                    : "text/*,.py,.js,.ts,.tsx,.jsx,.json,.csv,.md,.txt,.log,.yaml,.yml,.toml,.xml,.html,.css,.sh,.env"
+                }
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files) handleFileSelect(e.target.files);
@@ -1026,7 +1054,7 @@ export function ChatPage() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={streaming || attachments.length >= 5}
                   className="shrink-0 p-2 rounded-xl border border-[#E5E1DB] bg-white text-[#6F6B66] hover:text-[#2D2B28] hover:border-[#B1ADA1] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Attach file"
+                  title={currentModelSupportsVision ? "Attach file or image" : "Attach file (select a vision model to attach images)"}
                 >
                   <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5}>
                     <path d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />

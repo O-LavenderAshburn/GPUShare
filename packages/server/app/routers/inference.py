@@ -360,13 +360,18 @@ async def list_models(
     except Exception:
         running = set()
 
+    _VISION_NAME_PATTERNS = ("llava", "moondream", "bakllava", "vision", "minicpm-v", "qwen2-vl", "llama3.2-vision")
+
     local_cost = get_inference_cost_per_token()
     for model_name in available:
+        name_lower = model_name.lower()
+        is_vision = any(p in name_lower for p in _VISION_NAME_PATTERNS)
         models.append(ModelInfo(
             id=model_name,
             owned_by="local",
             cost_per_million_tokens=float(local_cost * Decimal("1000000")) if settings.BILLING_ENABLED else 0,
             loaded=model_name in running,
+            vision_support=is_vision,
         ))
 
     # OpenRouter models
@@ -380,10 +385,15 @@ async def list_models(
                 completion_rate = float(pricing.get("completion", "0"))
                 # Average the two rates and multiply by 1M for display
                 avg_rate = (prompt_rate + completion_rate) / 2
+                # OpenRouter models support vision if the model architecture includes image input
+                architecture = m.get("architecture", {})
+                input_modalities = architecture.get("input_modalities") or architecture.get("modality", "")
+                is_vision = "image" in str(input_modalities).lower()
                 models.append(ModelInfo(
                     id=m["id"],
                     owned_by="openrouter",
                     cost_per_million_tokens=round(avg_rate * 1_000_000, 4),
+                    vision_support=is_vision,
                 ))
         except Exception:
             pass
