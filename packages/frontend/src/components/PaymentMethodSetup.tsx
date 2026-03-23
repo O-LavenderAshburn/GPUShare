@@ -8,9 +8,9 @@ import {
 } from "@stripe/react-stripe-js";
 import { Button } from "./ui";
 
-const stripePromise = loadStripe(
-  import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ""
-);
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+  : null;
 
 interface PaymentMethodSetupFormProps {
   clientSecret: string;
