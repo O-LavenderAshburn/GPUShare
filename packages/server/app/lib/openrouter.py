@@ -50,7 +50,7 @@ async def chat_completion(
     headers = {
         "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/gpu-node",
+        "HTTP-Referer": "https://github.com/gpushare",
     }
     payload: dict = {
         "model": model,
@@ -67,7 +67,9 @@ async def chat_completion(
         payload["tool_choice"] = tool_choice
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers)
+        resp = await client.post(
+            f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers
+        )
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -88,7 +90,7 @@ async def chat_completion_stream(
     headers = {
         "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/gpu-node",
+        "HTTP-Referer": "https://github.com/gpushare",
     }
     payload: dict = {
         "model": model,
@@ -106,7 +108,9 @@ async def chat_completion_stream(
         payload["tool_choice"] = tool_choice
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        async with client.stream("POST", f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers) as resp:
+        async with client.stream(
+            "POST", f"{OPENROUTER_BASE}/chat/completions", json=payload, headers=headers
+        ) as resp:
             try:
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -149,7 +153,9 @@ async def _get_model_pricing(model: str) -> tuple[float, float]:
                     float(pricing.get("completion", "0")),
                 )
     except Exception:
-        logger.warning("Failed to fetch OpenRouter model pricing for %s", model, exc_info=True)
+        logger.warning(
+            "Failed to fetch OpenRouter model pricing for %s", model, exc_info=True
+        )
 
     rates = _pricing_cache.get(model, (0.0, 0.0))
     if rates == (0.0, 0.0):
@@ -180,7 +186,9 @@ async def list_models() -> list[dict]:
             all_models = resp.json().get("data", [])
     except Exception:
         # If we can't fetch pricing, return models with zero cost (will be billed at actual)
-        return [{"id": m, "pricing": {"prompt": "0", "completion": "0"}} for m in configured]
+        return [
+            {"id": m, "pricing": {"prompt": "0", "completion": "0"}} for m in configured
+        ]
 
     # Filter to configured models and cache pricing
     model_map = {m["id"]: m for m in all_models}

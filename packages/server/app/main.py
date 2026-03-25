@@ -1,4 +1,4 @@
-"""GPU Node — FastAPI entry point."""
+"""GPUShare — FastAPI entry point."""
 
 from __future__ import annotations
 

@@ -50,7 +50,7 @@ async def account_balance(
             total_topped_up_nzd=0.0,
             total_used_nzd=0.15,
         )
-    
+
     balance = await get_balance(db, user.id)
     month_usage = await get_this_month_usage(db, user.id)
 
@@ -158,7 +158,7 @@ async def account_topup(
                     "currency": "nzd",
                     "unit_amount": amount_cents,
                     "product_data": {
-                        "name": "GPU Node Credit Top-Up",
+                        "name": "GPUShare Credit Top-Up",
                         "description": f"NZ${body.amount_nzd:.2f} credit",
                     },
                 },
@@ -242,7 +242,9 @@ async def list_payment_methods(
 # ---------------------------------------------------------------------------
 # DELETE /v1/account/payment-methods/{payment_method_id}
 # ---------------------------------------------------------------------------
-@router.delete("/payment-methods/{payment_method_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/payment-methods/{payment_method_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_payment_method(
     payment_method_id: str,
     user: User = Depends(get_current_user),
@@ -253,14 +255,14 @@ async def delete_payment_method(
 
     try:
         payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
-        
+
         # Verify this payment method belongs to this user's customer
         if payment_method.customer != user.stripe_customer_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Payment method does not belong to this user",
             )
-        
+
         stripe.PaymentMethod.detach(payment_method_id)
     except stripe.error.InvalidRequestError:
         raise HTTPException(

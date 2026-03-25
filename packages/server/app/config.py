@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     CLOUDFLARE_R2_ACCOUNT_ID: str = ""
     CLOUDFLARE_R2_ACCESS_KEY_ID: str = ""
     CLOUDFLARE_R2_SECRET_ACCESS_KEY: str = ""
-    CLOUDFLARE_R2_BUCKET: str = "gpu-node-files"
+    CLOUDFLARE_R2_BUCKET: str = "gpushare-files"
     RESEND_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODELS: str = (
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # ── Signup & access ──────────────────────────────────────────────────
     INVITE_ONLY: bool = True
     REQUIRE_APPROVAL: bool = True
-    NODE_NAME: str = "My GPU Node"
+    NODE_NAME: str = "My GPUShare"
     FRONTEND_URL: str = (
         ""  # e.g. https://gpu-share.vercel.app — used for password reset links
     )

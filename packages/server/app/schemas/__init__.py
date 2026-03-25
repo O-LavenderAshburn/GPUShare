@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas for the GPU Node API."""
+"""Pydantic request/response schemas for the GPUShare API."""
 
 from __future__ import annotations
 

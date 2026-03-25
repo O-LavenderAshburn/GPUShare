@@ -156,10 +156,10 @@ cloudflared tunnel --url http://localhost:8000
 
 # Or with your own domain (persistent URL):
 cloudflared tunnel login
-cloudflared tunnel create gpu-node
-cloudflared tunnel route dns gpu-node gpu.yourdomain.com
-cloudflared tunnel token gpu-node   # add TUNNEL_TOKEN to .env
-cloudflared tunnel run gpu-node
+cloudflared tunnel create gpushare
+cloudflared tunnel route dns gpushare gpu.yourdomain.com
+cloudflared tunnel token gpushare   # add TUNNEL_TOKEN to .env
+cloudflared tunnel run gpushare
 ```
 
 **4. Deploy the frontend**

@@ -1,6 +1,6 @@
-# Self-Hosting GPU Node
+# Self-Hosting GPUShare
 
-GPU Node lets you share your GPU's compute (AI inference + 3D rendering) with trusted users, billed at electricity cost. This guide gets you from zero to running.
+GPUShare lets you share your GPU's compute (AI inference + 3D rendering) with trusted users, billed at electricity cost. This guide gets you from zero to running.
 
 ## Prerequisites
 

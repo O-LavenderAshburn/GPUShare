@@ -177,10 +177,10 @@ confirm() {
   fi
   if [ "$default" = "y" ]; then
     read -rp "  $prompt [Y/n]: " answer
-    [[ "${answer,,}" != "n" ]]
+    [[ "$(echo "$answer" | tr '[:upper:]' '[:lower:]')" != "n" ]]
   else
     read -rp "  $prompt (y/N): " answer
-    [[ "${answer,,}" == "y" ]]
+    [[ "$(echo "$answer" | tr '[:upper:]' '[:lower:]')" == "y" ]]
   fi
 }
 
@@ -379,7 +379,8 @@ configure_core() {
     fi
   elif [ "$GPU_VENDOR" = "apple" ]; then
     # Apple Silicon TDP estimates
-    local chip_name="${GPU_NAME,,}"
+    local chip_name
+    chip_name=$(echo "$GPU_NAME" | tr '[:upper:]' '[:lower:]')
     if echo "$chip_name" | grep -q "m4"; then
       default_inf_watts=18; default_rnd_watts=20; default_sys_watts=25
     elif echo "$chip_name" | grep -q "m3"; then
@@ -506,7 +507,7 @@ OPENROUTER_MODELS=
 CLOUDFLARE_R2_ACCOUNT_ID=${R2_ACCOUNT_ID}
 CLOUDFLARE_R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-CLOUDFLARE_R2_BUCKET=gpu-node-files
+CLOUDFLARE_R2_BUCKET=gpushare-files
 
 # Email (Resend)
 RESEND_API_KEY=${RESEND_API_KEY}

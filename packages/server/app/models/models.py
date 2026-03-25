@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for GPU Node."""
+"""SQLAlchemy ORM models for GPUShare."""
 
 from __future__ import annotations
 
@@ -35,29 +35,51 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, default="pending", server_default=text("'pending'"))
-    role: Mapped[str] = mapped_column(String, default="user", server_default=text("'user'"))
+    status: Mapped[str] = mapped_column(
+        String, default="pending", server_default=text("'pending'")
+    )
+    role: Mapped[str] = mapped_column(
+        String, default="user", server_default=text("'user'")
+    )
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    billing_type: Mapped[str] = mapped_column(String, default="postpaid", server_default=text("'postpaid'"))
-    hard_limit_nzd: Mapped[Decimal] = mapped_column(Numeric, default=Decimal("-20.00"), server_default=text("-20.00"))
+    billing_type: Mapped[str] = mapped_column(
+        String, default="postpaid", server_default=text("'postpaid'")
+    )
+    hard_limit_nzd: Mapped[Decimal] = mapped_column(
+        Numeric, default=Decimal("-20.00"), server_default=text("-20.00")
+    )
     services_enabled: Mapped[List[str]] = mapped_column(
         ARRAY(String),
         server_default=text("'{inference,render}'"),
     )
     password_reset_token: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    password_reset_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    theme: Mapped[str] = mapped_column(String, default="default", server_default=text("'default'"))
+    password_reset_expires: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    theme: Mapped[str] = mapped_column(
+        String, default="default", server_default=text("'default'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
     )
 
     # Relationships
-    api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    credit_entries: Mapped[List["CreditLedger"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    usage_logs: Mapped[List["UsageLog"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    render_jobs: Mapped[List["RenderJob"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    invoices: Mapped[List["Invoice"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    api_keys: Mapped[List["ApiKey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    credit_entries: Mapped[List["CreditLedger"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    usage_logs: Mapped[List["UsageLog"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    render_jobs: Mapped[List["RenderJob"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    invoices: Mapped[List["Invoice"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class ApiKey(Base):
@@ -76,12 +98,16 @@ class ApiKey(Base):
     )
     key_hash: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     label: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
     )
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="api_keys")
@@ -112,8 +138,12 @@ class Invite(Base):
         DateTime(timezone=True),
         server_default=text("now()"),
     )
-    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class CreditLedger(Base):
@@ -185,19 +215,33 @@ class RenderJob(Base):
         ForeignKey("users.id"),
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(String, default="queued", server_default=text("'queued'"))
+    status: Mapped[str] = mapped_column(
+        String, default="queued", server_default=text("'queued'")
+    )
     engine: Mapped[str] = mapped_column(String, nullable=False)
-    frame_start: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    frame_start: Mapped[int] = mapped_column(
+        Integer, default=1, server_default=text("1")
+    )
     frame_end: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
     samples: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    resolution_x: Mapped[int] = mapped_column(Integer, default=1920, server_default=text("1920"))
-    resolution_y: Mapped[int] = mapped_column(Integer, default=1080, server_default=text("1080"))
-    output_format: Mapped[str] = mapped_column(String, default="PNG", server_default=text("'PNG'"))
+    resolution_x: Mapped[int] = mapped_column(
+        Integer, default=1920, server_default=text("1920")
+    )
+    resolution_y: Mapped[int] = mapped_column(
+        Integer, default=1080, server_default=text("1080")
+    )
+    output_format: Mapped[str] = mapped_column(
+        String, default="PNG", server_default=text("'PNG'")
+    )
     blend_file_key: Mapped[str] = mapped_column(String, nullable=False)
     output_key: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     download_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    download_expires: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    frames_done: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    download_expires: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    frames_done: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
     render_seconds: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     cost_nzd: Mapped[Optional[Decimal]] = mapped_column(Numeric, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -205,8 +249,12 @@ class RenderJob(Base):
         DateTime(timezone=True),
         server_default=text("now()"),
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="render_jobs")
@@ -230,12 +278,16 @@ class Invoice(Base):
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     amount_nzd: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
     stripe_invoice_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    status: Mapped[str] = mapped_column(String, default="pending", server_default=text("'pending'"))
+    status: Mapped[str] = mapped_column(
+        String, default="pending", server_default=text("'pending'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),
     )
-    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="invoices")
