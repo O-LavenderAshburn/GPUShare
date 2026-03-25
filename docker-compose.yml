@@ -11,6 +11,12 @@ services:
     volumes:
       - render-tmp:/tmp/renders
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   render-worker:
     build:
@@ -35,7 +41,8 @@ services:
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     network_mode: host
     depends_on:
-      - fastapi
+      fastapi:
+        condition: service_healthy
     restart: unless-stopped
     profiles:
       - tunnel
