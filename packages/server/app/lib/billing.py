@@ -84,7 +84,9 @@ async def get_this_month_usage(db: AsyncSession, user_id: UUID) -> Decimal:
     result = await db.execute(
         select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
             CreditLedger.user_id == user_id,
-            CreditLedger.type.in_(["inference_usage", "render_usage"]),
+            CreditLedger.type.in_(
+                ["inference_usage", "cloud_inference_usage", "render_usage"]
+            ),
             extract("month", CreditLedger.created_at) == now.month,
             extract("year", CreditLedger.created_at) == now.year,
         )

@@ -50,6 +50,7 @@ async def account_balance(
             total_topped_up_nzd=0.0,
             total_used_nzd=0.15,
             total_inference_cost_nzd=0.15,
+            total_cloud_inference_cost_nzd=0.15,
             total_render_cost_nzd=0.0,
         )
 
@@ -74,14 +75,23 @@ async def account_balance(
     )
     total_used = abs(float(used_result.scalar_one()))
 
-    # Total inference cost (absolute sum of inference_usage entries)
+    # Total inference cost (absolute sum of all inference entries)
     inference_result = await db.execute(
         select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
             CreditLedger.user_id == user.id,
-            CreditLedger.type == "inference_usage",
+            CreditLedger.type.in_(["inference_usage", "cloud_inference_usage"]),
         )
     )
     total_inference_cost = abs(float(inference_result.scalar_one()))
+
+    # Total cloud inference cost (absolute sum of cloud_inference_usage entries)
+    cloud_inference_result = await db.execute(
+        select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
+            CreditLedger.user_id == user.id,
+            CreditLedger.type == "cloud_inference_usage",
+        )
+    )
+    total_cloud_inference_cost = abs(float(cloud_inference_result.scalar_one()))
 
     # Total render cost (absolute sum of render_usage entries)
     render_result = await db.execute(
@@ -100,6 +110,7 @@ async def account_balance(
         total_topped_up_nzd=total_topped_up,
         total_used_nzd=total_used,
         total_inference_cost_nzd=total_inference_cost,
+        total_cloud_inference_cost_nzd=total_cloud_inference_cost,
         total_render_cost_nzd=total_render_cost,
     )
 

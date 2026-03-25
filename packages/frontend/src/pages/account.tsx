@@ -173,7 +173,6 @@ export function AccountPage() {
 
   // Compute usage statistics from loaded usage data and backend aggregates
   const usageStats = useMemo(() => {
-    let cloudInferenceCost = 0;
     let cloudInferenceCount = 0;
     let localInferenceCount = 0;
     const cloudModelCosts: Record<string, number> = {};
@@ -181,7 +180,6 @@ export function AccountPage() {
     for (const u of usage) {
       const isCloud = u.model.includes("/");
       if (isCloud) {
-        cloudInferenceCost += u.cost_nzd;
         cloudInferenceCount++;
         cloudModelCosts[u.model] = (cloudModelCosts[u.model] || 0) + u.cost_nzd;
       } else {
@@ -191,8 +189,8 @@ export function AccountPage() {
 
     const totalKwh = usage.reduce((sum, u) => sum + u.kwh, 0);
     const totalInferenceCost = balance?.total_inference_cost_nzd ?? 0;
+    const cloudInferenceCost = balance?.total_cloud_inference_cost_nzd ?? 0;
     const renderCost = balance?.total_render_cost_nzd ?? 0;
-    // Derive local inference cost from backend total minus visible cloud cost
     const localInferenceCost = Math.max(0, totalInferenceCost - cloudInferenceCost);
 
     const topCloudModels = Object.entries(cloudModelCosts)

@@ -73,7 +73,9 @@ async def get_user(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     return await _user_to_response(db, user)
 
 
@@ -88,7 +90,9 @@ async def update_user(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if body.status is not None:
         user.status = body.status
@@ -116,7 +120,9 @@ async def adjust_balance(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     await write_ledger_entry(
         db,
@@ -146,10 +152,10 @@ async def system_stats(
     )
     active_users = active_users_result.scalar_one()
 
-    # Total inference cost (absolute value of sum of inference_usage entries)
+    # Total inference cost (absolute value of sum of all inference entries)
     inference_result = await db.execute(
         select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
-            CreditLedger.type == "inference_usage"
+            CreditLedger.type.in_(["inference_usage", "cloud_inference_usage"])
         )
     )
     total_inference_cost_nzd = abs(float(inference_result.scalar_one()))
@@ -222,6 +228,7 @@ async def check_integration_health(
 
 async def _check_ollama(settings):
     import httpx
+
     async with httpx.AsyncClient(timeout=5) as client:
         r = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
         r.raise_for_status()
@@ -229,12 +236,14 @@ async def _check_ollama(settings):
 
 async def _check_stripe(settings):
     import stripe as stripe_lib
+
     stripe_lib.api_key = settings.STRIPE_SECRET_KEY
     stripe_lib.Account.retrieve()
 
 
 async def _check_r2(settings):
     import boto3
+
     s3 = boto3.client(
         "s3",
         endpoint_url=settings.R2_ENDPOINT_URL,
@@ -246,6 +255,7 @@ async def _check_r2(settings):
 
 async def _check_resend(settings):
     import httpx
+
     async with httpx.AsyncClient(timeout=5) as client:
         r = await client.get(
             "https://api.resend.com/domains",
@@ -256,6 +266,7 @@ async def _check_resend(settings):
 
 async def _check_openrouter(settings):
     import httpx
+
     async with httpx.AsyncClient(timeout=5) as client:
         r = await client.get(
             "https://openrouter.ai/api/v1/models",
@@ -266,6 +277,7 @@ async def _check_openrouter(settings):
 
 async def _check_tapo(settings):
     import httpx
+
     async with httpx.AsyncClient(timeout=5) as client:
         r = await client.get(f"http://{settings.TAPO_IP}/api/v1/status", timeout=3)
         r.raise_for_status()

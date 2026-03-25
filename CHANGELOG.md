@@ -30,6 +30,7 @@ All notable changes to GPUShare are documented here.
 - Added OpenCode integration with auto-routing model support
 
 ### Bug Fixes
+- Fixed price breakdown pie chart showing incorrect local vs cloud inference costs. Cloud inference was being calculated from only the first 50 usage logs instead of the full backend total, misattributing costs when users had more than 50 entries. Backend now tracks `cloud_inference_usage` as a separate ledger type and returns `total_cloud_inference_cost_nzd` in the balance response.
 - Fixed donut chart incorrectly showing render costs by deriving them from `totalUsed - inferenceCost` (which included non-usage negative ledger entries). Now uses per-type ledger sums queried from the backend, matching the admin dashboard approach.
 - Fixed CORS policy errors from `gpu-share.vercel.app`
 - Fixed models outputting raw XML `<tool_call>` tags instead of using native JSON function calling

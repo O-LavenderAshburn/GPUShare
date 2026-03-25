@@ -21,7 +21,13 @@ from app.lib.billing import (
     get_inference_cost_per_token,
     write_ledger_entry,
 )
-from app.lib.ollama import chat_completion as ollama_chat, chat_completion_stream as ollama_stream, count_tokens, list_models as ollama_list_models, list_running_models as ollama_list_running_models
+from app.lib.ollama import (
+    chat_completion as ollama_chat,
+    chat_completion_stream as ollama_stream,
+    count_tokens,
+    list_models as ollama_list_models,
+    list_running_models as ollama_list_running_models,
+)
 from app.lib.openrouter import (
     chat_completion as openrouter_chat,
     chat_completion_stream as openrouter_stream,
@@ -49,7 +55,12 @@ def _extract_text(content: str | list) -> str:
     if isinstance(content, str):
         return content
     from app.schemas.inference import ContentPart
-    return " ".join(p.text for p in content if isinstance(p, ContentPart) and p.type == "text" and p.text)
+
+    return " ".join(
+        p.text
+        for p in content
+        if isinstance(p, ContentPart) and p.type == "text" and p.text
+    )
 
 
 def _to_ollama_message(m) -> dict:
@@ -60,7 +71,12 @@ def _to_ollama_message(m) -> dict:
         msg["content"] = m.content
     elif m.content is not None:
         from app.schemas.inference import ContentPart
-        text_parts = [p.text for p in m.content if isinstance(p, ContentPart) and p.type == "text" and p.text]
+
+        text_parts = [
+            p.text
+            for p in m.content
+            if isinstance(p, ContentPart) and p.type == "text" and p.text
+        ]
         images = []
         for p in m.content:
             if isinstance(p, ContentPart) and p.type == "image_url" and p.image_url:
@@ -211,9 +227,12 @@ async def create_chat_completion(
     # Non-streaming path
     if use_openrouter:
         result = await openrouter_chat(
-            model=body.model, messages=messages,
-            temperature=body.temperature, max_tokens=body.max_tokens,
-            tools=tools_dicts, tool_choice=body.tool_choice,
+            model=body.model,
+            messages=messages,
+            temperature=body.temperature,
+            max_tokens=body.max_tokens,
+            tools=tools_dicts,
+            tool_choice=body.tool_choice,
         )
         resp_message = result.get("choices", [{}])[0].get("message", {})
         assistant_content = resp_message.get("content", "")
@@ -221,15 +240,19 @@ async def create_chat_completion(
         resp_finish_reason = result.get("choices", [{}])[0].get("finish_reason", "stop")
         # OpenRouter returns usage in the response
         usage = result.get("usage", {})
-        output_tokens = usage.get("completion_tokens", count_tokens(assistant_content or ""))
+        output_tokens = usage.get(
+            "completion_tokens", count_tokens(assistant_content or "")
+        )
         input_tokens = usage.get("prompt_tokens", input_tokens)
     else:
         entry = QueueEntry()
         await gpu_queue.acquire(entry)
         try:
             result = await ollama_chat(
-                model=body.model, messages=messages,
-                temperature=body.temperature, max_tokens=body.max_tokens,
+                model=body.model,
+                messages=messages,
+                temperature=body.temperature,
+                max_tokens=body.max_tokens,
                 tools=tools_dicts,
             )
         finally:
@@ -244,6 +267,7 @@ async def create_chat_completion(
     assistant_msg = ChatMessage(role="assistant", content=assistant_content or None)
     if resp_tool_calls:
         from app.schemas.inference import ToolCall, ToolCallFunction
+
         parsed_tool_calls = []
         for i, tc in enumerate(resp_tool_calls):
             func = tc.get("function", {})
@@ -251,19 +275,23 @@ async def create_chat_completion(
             args = func.get("arguments", "{}")
             if isinstance(args, dict):
                 args = json.dumps(args)
-            parsed_tool_calls.append(ToolCall(
-                id=tc.get("id", f"call_{uuid.uuid4().hex[:24]}"),
-                type=tc.get("type", "function"),
-                function=ToolCallFunction(
-                    name=func.get("name", ""),
-                    arguments=args,
-                ),
-            ))
+            parsed_tool_calls.append(
+                ToolCall(
+                    id=tc.get("id", f"call_{uuid.uuid4().hex[:24]}"),
+                    type=tc.get("type", "function"),
+                    function=ToolCallFunction(
+                        name=func.get("name", ""),
+                        arguments=args,
+                    ),
+                )
+            )
         assistant_msg.tool_calls = parsed_tool_calls
         resp_finish_reason = "tool_calls"
 
     # Calculate cost and record usage
-    cost, kwh = await _calculate_cost(body.model, input_tokens, output_tokens, use_openrouter=bool(use_openrouter))
+    cost, kwh = await _calculate_cost(
+        body.model, input_tokens, output_tokens, use_openrouter=bool(use_openrouter)
+    )
 
     usage_log = UsageLog(
         user_id=user.id,
@@ -280,7 +308,7 @@ async def create_chat_completion(
             db=db,
             user_id=user.id,
             amount=-cost,
-            entry_type="inference_usage",
+            entry_type="cloud_inference_usage" if use_openrouter else "inference_usage",
             description=f"Inference: {body.model} ({input_tokens}+{output_tokens} tokens)",
         )
 
@@ -315,11 +343,15 @@ async def _calculate_cost(
         # so we never silently bill at $0.
         # We store kwh=0 for cloud models since no local energy is used.
         from app.lib.openrouter import _get_model_pricing
+
         prompt_rate, completion_rate = await _get_model_pricing(model)
-        cost = (Decimal(str(prompt_rate)) * input_tokens) + (Decimal(str(completion_rate)) * output_tokens)
+        cost = (Decimal(str(prompt_rate)) * input_tokens) + (
+            Decimal(str(completion_rate)) * output_tokens
+        )
         return cost, Decimal("0")
     else:
         from app.lib.billing import calculate_inference_cost
+
         return calculate_inference_cost(input_tokens, output_tokens)
 
 
@@ -390,8 +422,12 @@ async def _stream_response(
                         or_completion_tokens = usage.get("completion_tokens")
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
-                    done = chunk.get("choices", [{}])[0].get("finish_reason") is not None
-                    finish_reason_raw = chunk.get("choices", [{}])[0].get("finish_reason")
+                    done = (
+                        chunk.get("choices", [{}])[0].get("finish_reason") is not None
+                    )
+                    finish_reason_raw = chunk.get("choices", [{}])[0].get(
+                        "finish_reason"
+                    )
                 else:
                     content = chunk.get("message", {}).get("content", "")
                     done = chunk.get("done", False)
@@ -423,15 +459,17 @@ async def _stream_response(
                             args = func.get("arguments", "{}")
                             if isinstance(args, dict):
                                 args = json.dumps(args)
-                            tc_list.append({
-                                "index": i,
-                                "id": f"call_{uuid.uuid4().hex[:24]}",
-                                "type": "function",
-                                "function": {
-                                    "name": func.get("name", ""),
-                                    "arguments": args,
-                                },
-                            })
+                            tc_list.append(
+                                {
+                                    "index": i,
+                                    "id": f"call_{uuid.uuid4().hex[:24]}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": func.get("name", ""),
+                                        "arguments": args,
+                                    },
+                                }
+                            )
                         sse_delta["tool_calls"] = tc_list
                         finish_reason = "tool_calls"
 
@@ -464,7 +502,9 @@ async def _stream_response(
             output_tokens = or_completion_tokens
         else:
             output_tokens = count_tokens(collected_content)
-        cost, kwh = await _calculate_cost(model, input_tokens, output_tokens, use_openrouter=use_openrouter)
+        cost, kwh = await _calculate_cost(
+            model, input_tokens, output_tokens, use_openrouter=use_openrouter
+        )
 
         usage_log = UsageLog(
             user_id=user.id,
@@ -481,7 +521,9 @@ async def _stream_response(
                 db=db,
                 user_id=user.id,
                 amount=-cost,
-                entry_type="inference_usage",
+                entry_type="cloud_inference_usage"
+                if use_openrouter
+                else "inference_usage",
                 description=f"Inference: {model} ({input_tokens}+{output_tokens} tokens)",
             )
         await db.commit()
@@ -506,13 +548,15 @@ async def list_models(
     models: list[ModelInfo] = []
 
     # Virtual "auto" model — smart routing (always first)
-    models.append(ModelInfo(
-        id="auto",
-        owned_by="gpushare",
-        cost_per_million_tokens=0,
-        loaded=True,
-        vision_support=False,
-    ))
+    models.append(
+        ModelInfo(
+            id="auto",
+            owned_by="gpushare",
+            cost_per_million_tokens=0,
+            loaded=True,
+            vision_support=False,
+        )
+    )
 
     # Local Ollama models — only those actually loaded
     try:
@@ -526,19 +570,31 @@ async def list_models(
     except Exception:
         running = set()
 
-    _VISION_NAME_PATTERNS = ("llava", "moondream", "bakllava", "vision", "minicpm-v", "qwen2-vl", "llama3.2-vision")
+    _VISION_NAME_PATTERNS = (
+        "llava",
+        "moondream",
+        "bakllava",
+        "vision",
+        "minicpm-v",
+        "qwen2-vl",
+        "llama3.2-vision",
+    )
 
     local_cost = get_inference_cost_per_token()
     for model_name in available:
         name_lower = model_name.lower()
         is_vision = any(p in name_lower for p in _VISION_NAME_PATTERNS)
-        models.append(ModelInfo(
-            id=model_name,
-            owned_by="local",
-            cost_per_million_tokens=float(local_cost * Decimal("1000000")) if settings.BILLING_ENABLED else 0,
-            loaded=model_name in running,
-            vision_support=is_vision,
-        ))
+        models.append(
+            ModelInfo(
+                id=model_name,
+                owned_by="local",
+                cost_per_million_tokens=float(local_cost * Decimal("1000000"))
+                if settings.BILLING_ENABLED
+                else 0,
+                loaded=model_name in running,
+                vision_support=is_vision,
+            )
+        )
 
     # OpenRouter models
     if settings.OPENROUTER_API_KEY:
@@ -553,14 +609,18 @@ async def list_models(
                 avg_rate = (3 * prompt_rate + completion_rate) / 4
                 # OpenRouter models support vision if the model architecture includes image input
                 architecture = m.get("architecture", {})
-                input_modalities = architecture.get("input_modalities") or architecture.get("modality", "")
+                input_modalities = architecture.get(
+                    "input_modalities"
+                ) or architecture.get("modality", "")
                 is_vision = "image" in str(input_modalities).lower()
-                models.append(ModelInfo(
-                    id=m["id"],
-                    owned_by="openrouter",
-                    cost_per_million_tokens=round(avg_rate * 1_000_000, 4),
-                    vision_support=is_vision,
-                ))
+                models.append(
+                    ModelInfo(
+                        id=m["id"],
+                        owned_by="openrouter",
+                        cost_per_million_tokens=round(avg_rate * 1_000_000, 4),
+                        vision_support=is_vision,
+                    )
+                )
         except Exception:
             pass
 

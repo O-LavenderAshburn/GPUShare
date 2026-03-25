@@ -18,6 +18,7 @@ class BalanceResponse(BaseModel):
     total_topped_up_nzd: float
     total_used_nzd: float
     total_inference_cost_nzd: float = 0.0
+    total_cloud_inference_cost_nzd: float = 0.0
     total_render_cost_nzd: float = 0.0
 
 

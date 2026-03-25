@@ -6,6 +6,7 @@ export interface BalanceResponse {
   total_topped_up_nzd: number;
   total_used_nzd: number;
   total_inference_cost_nzd: number;
+  total_cloud_inference_cost_nzd: number;
   total_render_cost_nzd: number;
 }
 
