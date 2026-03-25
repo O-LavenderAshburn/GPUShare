@@ -16,7 +16,7 @@ if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
 }
 
 # Write Config
-$confPath = "$env:USERPROFILE\.config\opencode"
+$confPath = "$env:APPDATA\opencode"
 if (-not (Test-Path $confPath)) { New-Item -ItemType Directory -Path $confPath -Force | Out-Null }
 
 $config = @{
@@ -32,7 +32,7 @@ $config = @{
     model = "gpushare/auto"
 } | ConvertTo-Json -Depth 10
 
-$config | Out-File "$confPath\opencode.json" -Encoding utf8
+$config | Out-File "$confPath\config.json" -Encoding utf8
 
 Write-Host "OpenCode configured with GPUShare!" -ForegroundColor Green
 Write-Host "  Model: gpushare/auto (smart routing)"

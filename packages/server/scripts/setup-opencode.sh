@@ -35,11 +35,15 @@ if ! command -v opencode &> /dev/null; then
     curl -fsSL https://opencode.ai/install | bash
 fi
 
-# Write Config
-CONF_DIR="$HOME/.config/opencode"
+# Resolve OS-specific config directory (matches Go's os.UserConfigDir())
+case "$(uname -s)" in
+    Darwin) CONF_DIR="$HOME/Library/Application Support/opencode" ;;
+    *)      CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode" ;;
+esac
+
 mkdir -p "$CONF_DIR"
 
-cat <<EOF > "$CONF_DIR/opencode.json"
+cat > "$CONF_DIR/config.json" <<EOF
 {
   "provider": {
     "gpushare": {
@@ -57,6 +61,7 @@ EOF
 echo "OpenCode configured with GPUShare!"
 echo "  Model: gpushare/auto (smart routing)"
 echo "  API:   ${API_URL}/v1"
+echo "  Config: ${CONF_DIR}/config.json"
 echo ""
 echo "Run 'opencode' in any project folder to start."
 echo "Tip: Type /models inside OpenCode to switch models."
