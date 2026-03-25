@@ -72,25 +72,59 @@ Your machine never needs an open port. Traffic enters through a Cloudflare Tunne
 
 ## Setup
 
-### Quick start
+### One-click install (easiest)
+
+**macOS / Linux** — paste this into your terminal:
 
 ```bash
-git clone https://github.com/Slaymish/GPUShare.git
-cd GPUShare
-./setup.sh        # macOS / Linux
-.\setup.ps1       # Windows (PowerShell)
+curl -fsSL https://raw.githubusercontent.com/Slaymish/GPUShare/main/install.sh | bash
 ```
 
-The setup script will:
+**Windows** — double-click `setup.bat`, or in PowerShell:
 
-1. Install Ollama and pull a model
-2. Ask for your database URL (with instructions for free Supabase/Neon setup)
-3. Configure your node (electricity rate, name, optional services)
-4. Build and start the Docker services
-5. Start a Cloudflare tunnel and give you a public URL
-6. Tell you exactly how to deploy the frontend to Vercel
+```powershell
+.\setup.bat
+```
 
-Total time: ~10 minutes.
+**Fully silent install** (no prompts, all defaults):
+
+```bash
+./setup.sh --quick                # macOS / Linux
+.\setup.ps1 -Quick                # Windows
+.\setup.bat --quick               # Windows (via .bat)
+```
+
+### What the installer does
+
+The setup script auto-detects your GPU and OS, then:
+
+1. **Checks prerequisites** — Docker, Git, port availability
+2. **Installs Ollama** — via Homebrew (macOS), winget (Windows), or official script (Linux)
+3. **Recommends a model** — based on your GPU VRAM (4B for 4GB, 8B for 8GB, 14B for 16GB, 32B for 24GB+)
+4. **Asks for your database URL** — with instructions for free Supabase/Neon setup
+5. **Configures your node** — electricity rate, GPU wattage (auto-estimated), name
+6. **Optional integrations** — Stripe billing, OpenRouter, 3D rendering, email
+7. **Builds and starts Docker services** — with health checks
+8. **Optionally starts a Cloudflare tunnel** — free public URL, no account needed
+
+Total time: ~10 minutes (interactive) or ~5 minutes (--quick).
+
+### Script options
+
+| Flag | Description |
+|------|-------------|
+| `--quick` / `-Quick` | Non-interactive, use all defaults |
+| `--skip-ollama` | Don't install Ollama or pull models |
+| `--skip-tunnel` | Don't start Cloudflare tunnel |
+| `--dry-run` | Show what would happen without executing |
+
+### Manual setup
+
+**1. Install Ollama**
+
+```bash
+# macOS
+brew install ollama && brew services start ollama
 
 ### Manual setup
 
@@ -213,7 +247,7 @@ I would love help! Check out:
 - [ ] AMD GPU support
 - [ ] Automatic job scheduling
 - [ ] Mobile app
-- [ ] One-click Windows installer
+- [x] One-click installer (Windows, macOS, Linux)
 
 ## License
 

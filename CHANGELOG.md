@@ -7,6 +7,17 @@ All notable changes to GPUShare are documented here.
 ## [Unreleased]
 
 ### Features
+- **One-click installers for Windows, macOS, and Linux** — completely rewritten `setup.sh` (macOS/Linux) and `setup.ps1` (Windows) with guided wizard and fully non-interactive mode. New `setup.bat` double-click launcher for Windows and `install.sh` curl one-liner (`curl -fsSL ... | bash`). Key additions:
+  - **`--quick` / `-Quick` flag** — non-interactive install with sensible defaults, zero prompts
+  - **GPU auto-detection** — auto-detects NVIDIA/AMD/Intel/Apple Silicon, VRAM, and recommends the right model size (4B for 4GB VRAM, 8B for 8GB, 14B for 16GB, 32B for 24GB+)
+  - **Smart wattage defaults** — GPU wattage estimates scale with detected VRAM instead of requiring manual input
+  - **Auto-installs dependencies** — Ollama via winget/Homebrew/official script; cloudflared via winget/Homebrew/apt
+  - **Health checks** — verifies Docker, Git, and port availability before proceeding; confirms server is reachable after startup
+  - **`--dry-run`** — preview what would happen without executing
+  - **`.env.bak` backup** — existing config is backed up before overwrite
+  - **OpenRouter** integrated into setup wizard as optional service
+  - **Bootstrap token auto-generated** — no more manual `INITIAL_ADMIN_BOOTSTRAP_TOKEN` setup
+- **GPU auto-detection** — automatic detection of GPU model, TDP (power limit), and VRAM at startup, eliminating manual wattage configuration. NVIDIA GPUs use `nvidia-smi power.limit` for accurate TDP; Apple Silicon and AMD GPUs use chip-family estimates. Both setup scripts (`setup.sh`, `setup.ps1`) and the Python backend config now auto-fill wattage defaults. Override anytime via `.env` variables.
 - **OpenAI-compatible tool/function calling** — full passthrough of `tools`, `tool_choice`, `tool_calls`, and `tool_call_id` for both Ollama and OpenRouter backends, enabling structured JSON tool execution in clients like OpenCode
 
 ### Infrastructure & Deployment
@@ -82,7 +93,7 @@ All notable changes to GPUShare are documented here.
 - npm scripts for syncing Alembic migrations from Docker to local filesystem
 - Dynamic CSP generation based on `API_URL` environment variable
 - Content Security Policy for Stripe integration
-- Automated setup scripts (`setup.sh`, `setup.ps1`) with simplified deployment instructions
+- Rewritten setup scripts (`setup.sh`, `setup.ps1`) as full one-click installers with GPU auto-detection, smart defaults, progress indicators, and `--quick` mode; added `setup.bat` (Windows double-click launcher) and `install.sh` (curl one-liner bootstrap)
 - Comprehensive `.env.example` with inline comments
 - Loading cards and skeleton states
 - Stripe conditionally loaded only when publishable key is present

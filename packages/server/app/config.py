@@ -1,10 +1,20 @@
-"""Application configuration loaded from environment variables."""
+"""Application configuration loaded from environment variables.
+
+GPU wattage defaults are auto-detected at import time via nvidia-smi TDP or
+Apple Silicon sysctl. Users can always override by setting GPU_INFERENCE_WATTS /
+GPU_RENDER_WATTS / SYSTEM_WATTS in their .env file.
+"""
 
 from __future__ import annotations
 
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.lib.gpu_detect import detect_gpu
+
+# Auto-detect GPU at startup — used as defaults when env vars are not set
+_detected = detect_gpu()
 
 
 class Settings(BaseSettings):
@@ -46,10 +56,12 @@ class Settings(BaseSettings):
     # ── Billing ──────────────────────────────────────────────────────────
     ELECTRICITY_RATE_KWH: float = 0.346
     CURRENCY: str = "NZD"
-    GPU_VRAM_GB: float = 16.0  # GPU VRAM in GB — used by model picker VRAM filter
-    GPU_INFERENCE_WATTS: float = 150
-    GPU_RENDER_WATTS: float = 300
-    SYSTEM_WATTS: float = 80
+    GPU_VRAM_GB: float = (
+        _detected.vram_mb / 1024.0
+    )  # auto-detected, overridable via .env
+    GPU_INFERENCE_WATTS: float = _detected.inference_watts
+    GPU_RENDER_WATTS: float = _detected.render_watts
+    SYSTEM_WATTS: float = _detected.system_watts
     BILLING_ENABLED: bool = True
     SOFT_LIMIT_WARN: float = -5.00
     HARD_LIMIT_DEFAULT: float = -20.00

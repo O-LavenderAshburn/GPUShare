@@ -13,7 +13,19 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
-from app.routers import admin, auth, billing, inference, invite, model_picker, openai_compat, render, skills, status
+from app.lib.gpu_detect import detect_gpu
+from app.routers import (
+    admin,
+    auth,
+    billing,
+    inference,
+    invite,
+    model_picker,
+    openai_compat,
+    render,
+    skills,
+    status,
+)
 
 
 @asynccontextmanager
@@ -22,6 +34,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: dispose engine
     from app.database import get_engine
+
     await get_engine().dispose()
 
 
@@ -119,9 +132,17 @@ async def health():
     from app.lib.tapo import is_configured as tapo_configured, get_energy_summary
 
     integrations = {
-        "stripe": bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_SECRET_KEY != "sk_test_placeholder"),
-        "r2": bool(settings.CLOUDFLARE_R2_ACCOUNT_ID and settings.CLOUDFLARE_R2_ACCOUNT_ID != "placeholder"),
-        "resend": bool(settings.RESEND_API_KEY and settings.RESEND_API_KEY != "re_placeholder"),
+        "stripe": bool(
+            settings.STRIPE_SECRET_KEY
+            and settings.STRIPE_SECRET_KEY != "sk_test_placeholder"
+        ),
+        "r2": bool(
+            settings.CLOUDFLARE_R2_ACCOUNT_ID
+            and settings.CLOUDFLARE_R2_ACCOUNT_ID != "placeholder"
+        ),
+        "resend": bool(
+            settings.RESEND_API_KEY and settings.RESEND_API_KEY != "re_placeholder"
+        ),
         "billing": settings.BILLING_ENABLED,
         "openrouter": bool(settings.OPENROUTER_API_KEY),
         "tapo": tapo_configured(),
@@ -150,4 +171,5 @@ async def health():
         "ollama_models": ollama_models,
         "integrations": integrations,
         "power": power,
+        "gpu_detected": detect_gpu().to_dict(),
     }
