@@ -6,6 +6,9 @@ All notable changes to GPUShare are documented here.
 
 ## [Unreleased]
 
+### Features
+- **OpenAI-compatible tool/function calling** — full passthrough of `tools`, `tool_choice`, `tool_calls`, and `tool_call_id` for both Ollama and OpenRouter backends, enabling structured JSON tool execution in clients like OpenCode
+
 ### Infrastructure & Deployment
 - Added Cloudflared ingress config to fix 503 errors for all requests
 - Added FastAPI healthcheck and made Cloudflared wait for healthy origin before routing traffic
@@ -17,6 +20,7 @@ All notable changes to GPUShare are documented here.
 
 ### Bug Fixes
 - Fixed CORS policy errors from `gpu-share.vercel.app`
+- Fixed models outputting raw XML `<tool_call>` tags instead of using native JSON function calling
 
 ---
 
