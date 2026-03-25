@@ -49,6 +49,8 @@ async def account_balance(
             billing_type="prepaid",
             total_topped_up_nzd=0.0,
             total_used_nzd=0.15,
+            total_inference_cost_nzd=0.15,
+            total_render_cost_nzd=0.0,
         )
 
     balance = await get_balance(db, user.id)
@@ -72,6 +74,24 @@ async def account_balance(
     )
     total_used = abs(float(used_result.scalar_one()))
 
+    # Total inference cost (absolute sum of inference_usage entries)
+    inference_result = await db.execute(
+        select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
+            CreditLedger.user_id == user.id,
+            CreditLedger.type == "inference_usage",
+        )
+    )
+    total_inference_cost = abs(float(inference_result.scalar_one()))
+
+    # Total render cost (absolute sum of render_usage entries)
+    render_result = await db.execute(
+        select(func.coalesce(func.sum(CreditLedger.amount), 0)).where(
+            CreditLedger.user_id == user.id,
+            CreditLedger.type == "render_usage",
+        )
+    )
+    total_render_cost = abs(float(render_result.scalar_one()))
+
     return BalanceResponse(
         balance_nzd=float(balance),
         this_month_usage_nzd=float(month_usage),
@@ -79,6 +99,8 @@ async def account_balance(
         billing_type=user.billing_type,
         total_topped_up_nzd=total_topped_up,
         total_used_nzd=total_used,
+        total_inference_cost_nzd=total_inference_cost,
+        total_render_cost_nzd=total_render_cost,
     )
 
 

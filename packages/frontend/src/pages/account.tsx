@@ -194,7 +194,7 @@ export function AccountPage() {
     const totalKwh = usage.reduce((sum, u) => sum + u.kwh, 0);
     const inferenceCost = cloudInferenceCost + localInferenceCost;
     const totalUsed = balance?.total_used_nzd ?? 0;
-    const renderCost = Math.max(0, totalUsed - inferenceCost);
+    const renderCost = balance?.total_render_cost_nzd ?? 0;
 
     const topCloudModels = Object.entries(cloudModelCosts)
       .sort((a, b) => b[1] - a[1])

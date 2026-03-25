@@ -30,6 +30,7 @@ All notable changes to GPUShare are documented here.
 - Added OpenCode integration with auto-routing model support
 
 ### Bug Fixes
+- Fixed donut chart incorrectly showing render costs by deriving them from `totalUsed - inferenceCost` (which included non-usage negative ledger entries). Now uses per-type ledger sums queried from the backend, matching the admin dashboard approach.
 - Fixed CORS policy errors from `gpu-share.vercel.app`
 - Fixed models outputting raw XML `<tool_call>` tags instead of using native JSON function calling
 
