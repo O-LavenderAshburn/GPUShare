@@ -2,15 +2,17 @@ import { Outlet, Link, useRouterState } from "@tanstack/react-router";
 import { isAuthenticated, parseToken, clearToken } from "../lib/auth";
 import { useEffect, useState } from "react";
 import { useWebHaptics } from "../lib/haptics";
-import { billing, getHealth } from "../lib/api";
+import { auth, billing, getHealth } from "../lib/api";
 import type { HealthResponse } from "../lib/api";
 import { router } from "../router";
+import { OnboardingModal } from "./OnboardingModal";
 import {
   branding,
   status as statusConfig,
   balanceThresholds,
 } from "../theme.config";
 import { Button } from "./ui";
+import { fmtUsd } from "../lib/format";
 
 type ServerStatus = "online" | "warming_up" | "degraded" | "offline";
 
@@ -56,24 +58,58 @@ function useServerStatus(authed: boolean): {
   return { status, health };
 }
 
-function StatusPill({ status }: { status: ServerStatus }) {
+function StatusPill({
+  status,
+  health,
+}: {
+  status: ServerStatus;
+  health: HealthResponse | null;
+}) {
   const config = statusConfig[status];
+  const [hovered, setHovered] = useState(false);
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-800/50 text-xs">
-      <span className="relative flex h-2 w-2">
-        {config.pulse && (
+    <div
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F4F3EE] text-xs cursor-default">
+        <span className="relative flex h-2 w-2">
+          {config.pulse && (
+            <span
+              className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+              style={{ backgroundColor: config.color }}
+            />
+          )}
           <span
-            className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping"
+            className="relative inline-flex h-2 w-2 rounded-full"
             style={{ backgroundColor: config.color }}
           />
-        )}
-        <span
-          className="relative inline-flex h-2 w-2 rounded-full"
-          style={{ backgroundColor: config.color }}
-        />
-      </span>
-      <span className="text-gray-300">{config.label}</span>
+        </span>
+        <span className="text-[#6F6B66]">{config.label}</span>
+      </div>
+
+      {hovered && health && (
+        <div className="absolute top-full right-0 mt-1.5 z-50 w-56 bg-white border border-[#E5E1DB] rounded-lg shadow-lg p-3 text-xs space-y-1.5">
+          <div className="text-[#6F6B66]">
+            <span className="font-medium text-[#2D2B28]">Models: </span>
+            {health.ollama_models.length > 0
+              ? health.ollama_models.join(", ")
+              : "None"}
+          </div>
+          {health.power && (
+            <div className="text-[#6F6B66]">
+              <span className="font-medium text-[#2D2B28]">Power: </span>
+              {Math.round(health.power.current_watts)}w
+            </div>
+          )}
+          <div className="text-[#6F6B66]">
+            <span className="font-medium text-[#2D2B28]">Services: </span>
+            {health.services.length > 0 ? health.services.join(", ") : "None"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -192,7 +228,12 @@ export function Layout() {
 
   const [balance, setBalance] = useState<number | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() => {
+    return localStorage.getItem("gpushare_sidebar_collapsed") === "true";
+  });
   const { status, health } = useServerStatus(authed);
   const billingEnabled =
     (health?.integrations?.billing && health?.integrations?.stripe) ?? false;
@@ -203,12 +244,15 @@ export function Layout() {
       .getBalance()
       .then((b) => setBalance(b.balance_nzd))
       .catch(() => {});
-    import("../lib/api").then(({ auth }) =>
-      auth
-        .getMe()
-        .then((u) => setEmail(u.email))
-        .catch(() => {}),
-    );
+    auth
+      .getMe()
+      .then((u) => {
+        setEmail(u.email);
+        if (!u.onboarding_completed) {
+          setShowOnboarding(true);
+        }
+      })
+      .catch(() => {});
   }, [authed, routerState.location.pathname]);
 
   // Close mobile sidebar on route change
@@ -218,7 +262,7 @@ export function Layout() {
 
   if (isLoginPage || !authed) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white">
+      <div className="min-h-screen bg-[#F4F3EE] text-[#2D2B28]">
         <Outlet />
       </div>
     );
@@ -240,101 +284,186 @@ export function Layout() {
   const currentPath = routerState.location.pathname;
 
   return (
-    <div className="flex min-h-screen bg-gray-900 text-white overflow-x-hidden max-w-full">
+    <div className="flex h-screen bg-[#F4F3EE] text-[#2D2B28] overflow-hidden max-w-full">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-gray-950 flex-col border-r border-gray-800 fixed left-0 top-0 bottom-0">
-        <div className="p-6 border-b border-gray-800">
+      <aside
+        className={`hidden md:flex bg-white flex-col border-r border-[#E5E1DB] fixed left-0 top-0 bottom-0 transition-all duration-300 ${desktopSidebarCollapsed ? "w-16" : "w-64"}`}
+      >
+        <div className="p-6 border-b border-[#E5E1DB]">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold tracking-tight">
-              {branding.appName}
-            </h1>
-            <StatusPill status={status} />
+            {!desktopSidebarCollapsed && (
+              <>
+                <h1 className="text-xl font-bold tracking-tight">
+                  {branding.appName}
+                </h1>
+                <StatusPill status={status} health={health} />
+              </>
+            )}
+            {desktopSidebarCollapsed && (
+              <button
+                onClick={() => {
+                  setDesktopSidebarCollapsed(false);
+                  localStorage.setItem("gpushare_sidebar_collapsed", "false");
+                }}
+                className="text-[#6F6B66] hover:text-[#2D2B28] mx-auto"
+                title="Expand sidebar"
+              >
+                <MenuIcon className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
-              activeProps={{ className: "bg-gray-800 text-white" }}
-              inactiveProps={{
-                className:
-                  "text-gray-400 hover:text-white hover:bg-gray-800/50",
-              }}
-              onMouseDown={() => trigger("nudge")}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-gray-800 space-y-2">
-          {billingEnabled && balance !== null && (
-            <div className="text-sm">
-              <span className="text-gray-400">
-                {balance < 0 ? "Debt: " : "Balance: "}
-              </span>
-              <span
-                className={
-                  balance > balanceThresholds.high
-                    ? "text-green-400"
-                    : balance > balanceThresholds.medium
-                      ? "text-yellow-400"
-                      : balance > balanceThresholds.low
-                        ? "text-orange-400"
-                        : "text-red-400"
-                }
+          {navItems.map((item) => {
+            const Icon = iconMap[item.label];
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${desktopSidebarCollapsed ? "justify-center" : "justify-between"}`}
+                activeProps={{ className: "bg-[#F4F3EE] text-[#2D2B28]" }}
+                inactiveProps={{
+                  className:
+                    "text-[#6F6B66] hover:text-[#2D2B28] hover:bg-[#F4F3EE]",
+                }}
+                onMouseDown={() => trigger("nudge")}
+                title={desktopSidebarCollapsed ? item.label : undefined}
               >
-                ${Math.abs(balance).toFixed(2)}
-              </span>
-            </div>
-          )}
-          {email && (
-            <div className="text-xs text-gray-500 truncate">{email}</div>
-          )}
-          <Button
-            onClick={handleLogout}
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start"
-          >
-            Logout
-          </Button>
-        </div>
+                {desktopSidebarCollapsed ? (
+                  <span className="relative">
+                    {Icon && <Icon className="w-5 h-5" />}
+                    {item.label === "Account" &&
+                      billingEnabled &&
+                      balance !== null &&
+                      balance < balanceThresholds.low && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-[#C62828] opacity-75 animate-ping" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C62828]" />
+                        </span>
+                      )}
+                  </span>
+                ) : (
+                  <>
+                    {item.label}
+                    {item.label === "Account" &&
+                      billingEnabled &&
+                      balance !== null &&
+                      balance < balanceThresholds.low && (
+                        <span className="relative flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-[#C62828] opacity-75 animate-ping" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C62828]" />
+                        </span>
+                      )}
+                  </>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+        {!desktopSidebarCollapsed && (
+          <div className="p-4 border-t border-[#E5E1DB] flex justify-end">
+            <button
+              onClick={() => {
+                setDesktopSidebarCollapsed(true);
+                localStorage.setItem("gpushare_sidebar_collapsed", "true");
+              }}
+              className="text-[#B1ADA1] hover:text-[#6F6B66] transition-colors"
+              title="Collapse sidebar"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Mobile Top Bar */}
-      <div className="fixed top-0 left-0 right-0 z-40 md:hidden bg-gray-950 border-b border-gray-800">
+      <div className="fixed top-0 left-0 right-0 z-40 md:hidden bg-white border-b border-[#E5E1DB]">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <button
-              onClick={() => {
-                trigger("nudge");
-                setSidebarOpen(true);
-              }}
-              className="text-gray-400 hover:text-white flex-shrink-0"
-            >
-              <MenuIcon className="w-5 h-5" />
-            </button>
-            <h1 className="text-lg font-bold tracking-tight truncate">
-              {branding.appName}
-            </h1>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  trigger("nudge");
+                  setMobileMenuOpen(!mobileMenuOpen);
+                }}
+                className="text-[#6F6B66] hover:text-[#2D2B28] flex-shrink-0 flex items-center gap-1"
+              >
+                <h1 className="text-lg font-bold tracking-tight">
+                  {branding.appName}
+                </h1>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              {mobileMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setMobileMenuOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-[#E5E1DB] rounded-lg shadow-lg z-50 py-1">
+                    {navItems.map((item) => {
+                      const Icon = iconMap[item.label];
+                      const isActive = currentPath.startsWith(item.to);
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => {
+                            setMobileMenuOpen(false);
+                            trigger("nudge");
+                          }}
+                          className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
+                            isActive
+                              ? "bg-[#F4F3EE] text-[#2D2B28]"
+                              : "text-[#6F6B66] hover:text-[#2D2B28] hover:bg-[#F4F3EE]"
+                          }`}
+                        >
+                          <span className="relative">
+                            {Icon && <Icon className="w-5 h-5" />}
+                            {item.label === "Account" &&
+                              billingEnabled &&
+                              balance !== null &&
+                              balance < balanceThresholds.low && (
+                                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                                  <span className="absolute inline-flex h-full w-full rounded-full bg-[#C62828] opacity-75 animate-ping" />
+                                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C62828]" />
+                                </span>
+                              )}
+                          </span>
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="flex-shrink-0">
-            <StatusPill status={status} />
+            <StatusPill status={status} health={health} />
           </div>
         </div>
       </div>
 
-      {/* Mobile Slide-over Sidebar */}
-      {sidebarOpen && (
+      {/* Mobile Slide-over Sidebar - Removed, now using dropdown */}
+      {false && sidebarOpen && (
         <>
           <div
-            className="fixed inset-0 z-50 bg-black/60 md:hidden"
+            className="fixed inset-0 z-50 bg-black/30 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />
-          <div className="fixed inset-y-0 left-0 z-50 w-72 max-w-[80vw] bg-gray-950 flex flex-col md:hidden">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+          <div className="fixed inset-y-0 left-0 z-50 w-72 max-w-[80vw] bg-white flex flex-col md:hidden">
+            <div className="p-4 border-b border-[#E5E1DB] flex items-center justify-between">
               <h1 className="text-lg font-bold tracking-tight">
                 {branding.appName}
               </h1>
@@ -343,40 +472,72 @@ export function Layout() {
                   trigger("nudge");
                   setSidebarOpen(false);
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-[#6F6B66] hover:text-[#2D2B28]"
               >
                 <CloseIcon className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-3">
+            <nav className="flex-1 p-4 space-y-1">
+              {navItems.map((item) => {
+                const Icon = iconMap[item.label];
+                const isActive = currentPath.startsWith(item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-[#F4F3EE] text-[#2D2B28]"
+                        : "text-[#6F6B66] hover:text-[#2D2B28] hover:bg-[#F4F3EE]"
+                    }`}
+                    onMouseDown={() => trigger("nudge")}
+                  >
+                    <span className="relative">
+                      {Icon && <Icon className="w-5 h-5" />}
+                      {item.label === "Account" &&
+                        billingEnabled &&
+                        balance !== null &&
+                        balance < balanceThresholds.low && (
+                          <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-[#C62828] opacity-75 animate-ping" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#C62828]" />
+                          </span>
+                        )}
+                    </span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="p-4 border-t border-[#E5E1DB] space-y-3">
               {billingEnabled && balance !== null && (
                 <div className="text-sm">
-                  <span className="text-gray-400">
-                    {balance < 0 ? "Debt: " : "Balance: "}
+                  <span className="text-[#6F6B66]">
+                    {balance! < 0 ? "Debt: " : "Balance: "}
                   </span>
                   <span
                     className={
-                      balance > 10
-                        ? "text-green-400"
-                        : balance > 5
-                          ? "text-yellow-400"
-                          : balance > 0
-                            ? "text-orange-400"
-                            : "text-red-400"
+                      balance! > 10
+                        ? "text-[#2E7D32]"
+                        : balance! > 5
+                          ? "text-[#E65100]"
+                          : balance! > 0
+                            ? "text-[#EF6C00]"
+                            : "text-[#C62828]"
                     }
                   >
-                    ${Math.abs(balance).toFixed(2)}
+                    {fmtUsd(balance!)}
                   </span>
                 </div>
               )}
               {email && (
-                <div className="text-sm text-gray-400 truncate">{email}</div>
+                <div className="text-sm text-[#6F6B66] truncate">{email}</div>
               )}
               <Button
                 onClick={handleLogout}
                 variant="ghost"
                 size="sm"
-                className="w-full justify-start text-red-400 hover:text-red-300"
+                className="w-full justify-start text-[#C62828] hover:text-[#B71C1C]"
               >
                 Logout
               </Button>
@@ -386,35 +547,23 @@ export function Layout() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto pt-14 md:pt-0 pb-16 md:pb-0 min-w-0 w-full md:ml-64">
+      <main
+        className={`flex-1 overflow-auto pt-14 md:pt-0 min-w-0 w-full transition-all duration-300 ${desktopSidebarCollapsed ? "md:ml-16" : "md:ml-64"}`}
+      >
         <Outlet />
       </main>
 
-      {/* Mobile Bottom Tab Bar */}
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-gray-950 border-t border-gray-800 max-w-full"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      >
-        <div className="flex">
-          {navItems.map((item) => {
-            const Icon = iconMap[item.label];
-            const isActive = currentPath.startsWith(item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs font-medium transition-colors ${
-                  isActive ? "text-blue-400" : "text-gray-500"
-                }`}
-                onMouseDown={() => trigger("nudge")}
-              >
-                {Icon && <Icon className="w-5 h-5" />}
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <OnboardingModal
+        open={showOnboarding}
+        role={isAdmin ? "admin" : "user"}
+        nodeName={health?.node ?? "GPUShare"}
+        health={health}
+        billingEnabled={billingEnabled}
+        onComplete={() => {
+          setShowOnboarding(false);
+          auth.updateMe({ onboarding_completed: true }).catch(() => {});
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ export interface SignupRequest {
   email: string;
   password: string;
   name?: string;
+  bootstrap_token?: string;
 }
 
 export interface LoginRequest {
@@ -24,6 +25,11 @@ export interface UserResponse {
   hard_limit_nzd: number;
   services_enabled: string[];
   stripe_customer_id: string | null;
+  theme: string;
+  auto_light_model: string | null;
+  auto_heavy_model: string | null;
+  auto_token_threshold: number;
+  onboarding_completed: boolean;
   created_at: string;
 }
 

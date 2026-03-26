@@ -10,14 +10,75 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
+  RelativeTime,
 } from "../components/ui";
 
 const STATUS_STYLES: Record<string, string> = {
-  queued: "bg-yellow-900/50 text-yellow-300 border-yellow-700",
-  rendering: "bg-blue-900/50 text-blue-300 border-blue-700",
-  complete: "bg-green-900/50 text-green-300 border-green-700",
-  failed: "bg-red-900/50 text-red-300 border-red-700",
+  queued: "bg-[#FFF3E0] text-[#E65100] border-[#FFE0B2]",
+  rendering: "bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]",
+  complete: "bg-[#E8F5E9] text-[#2E7D32] border-[#C8E6C9]",
+  failed: "bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]",
 };
+
+type ViewMode = "list" | "grid";
+
+function getInitialViewMode(): ViewMode {
+  try {
+    const stored = localStorage.getItem("gpushare_render_view");
+    if (stored === "list" || stored === "grid") return stored;
+  } catch {}
+  return "list";
+}
+
+function ProgressBar({ job }: { job: RenderJobResponse }) {
+  const totalFrames = job.frame_end - job.frame_start + 1;
+
+  if (job.status === "rendering") {
+    const pct = totalFrames > 0 ? (job.frames_done / totalFrames) * 100 : 0;
+    return (
+      <div className="mt-1.5 w-full bg-[#EDEBE6] rounded h-1.5 overflow-hidden">
+        <div
+          className="h-full rounded bg-[#C15F3C] transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    );
+  }
+
+  if (job.status === "queued") {
+    return (
+      <div className="mt-1.5 w-full bg-[#EDEBE6] rounded h-1.5 overflow-hidden">
+        <div
+          className="h-full w-full rounded"
+          style={{
+            background:
+              "linear-gradient(90deg, #EDEBE6 0%, #C15F3C 50%, #EDEBE6 100%)",
+            backgroundSize: "200% 100%",
+            animation: "shimmer 1.5s ease-in-out infinite",
+          }}
+        />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+const CubeIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="w-10 h-10 text-[#B1ADA1]"
+  >
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+    <line x1="12" y1="22.08" x2="12" y2="12" />
+  </svg>
+);
 
 export function RenderPage() {
   const { trigger } = useWebHaptics();
@@ -34,6 +95,15 @@ export function RenderPage() {
   const [resY, setResY] = useState("1080");
   const [outputFormat, setOutputFormat] = useState<string>("PNG");
 
+  const [viewMode, setViewMode] = useState<ViewMode>(getInitialViewMode);
+
+  function setAndPersistViewMode(mode: ViewMode) {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("gpushare_render_view", mode);
+    } catch {}
+  }
+
   function fetchJobs() {
     render
       .listJobs()
@@ -46,7 +116,6 @@ export function RenderPage() {
     fetchJobs();
   }, []);
 
-  // Auto-refresh while any jobs are active
   useEffect(() => {
     const hasActive = jobs.some(
       (j) => j.status === "queued" || j.status === "rendering",
@@ -93,25 +162,36 @@ export function RenderPage() {
 
   const totalFrames = (j: RenderJobResponse) => j.frame_end - j.frame_start + 1;
 
+  const completedJobs = jobs.filter((j) => j.status === "complete");
+  const nonCompletedJobs = jobs.filter((j) => j.status !== "complete");
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl pb-20 md:pb-0 w-full">
+      {/* Shimmer animation for queued progress bars */}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
+
       <h2 className="text-lg font-semibold">Render Jobs</h2>
 
       <form
         onSubmit={handleSubmit}
-        className="bg-gray-800 rounded-xl p-4 md:p-6 space-y-4"
+        className="bg-white rounded-xl p-4 md:p-6 space-y-4 border border-[#E5E1DB]"
       >
         <h3 className="font-medium">New Render Job</h3>
 
         {error && (
-          <div className="bg-red-900/50 border border-red-700 text-red-200 text-sm rounded-lg p-3">
+          <div className="bg-[#FFEBEE] border border-[#FFCDD2] text-[#C62828] text-sm rounded-lg p-3">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div className="col-span-2 md:col-span-3">
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Blend File
             </label>
             <Input
@@ -119,12 +199,12 @@ export function RenderPage() {
               type="file"
               accept=".blend"
               required
-              className="w-full text-sm text-gray-400 file:mr-4 file:rounded-lg file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-sm file:text-white hover:file:bg-gray-600"
+              className="w-full text-sm text-[#6F6B66] file:mr-4 file:rounded-lg file:border-0 file:bg-[#EDEAE3] file:px-4 file:py-2 file:text-sm file:text-[#2D2B28] hover:file:bg-[#E5E1DB]"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Engine</label>
+            <label className="block text-sm text-[#6F6B66] mb-1">Engine</label>
             <Select
               value={engine}
               onValueChange={(value) => setEngine(value as any)}
@@ -140,7 +220,7 @@ export function RenderPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Frame Start
             </label>
             <Input
@@ -148,12 +228,11 @@ export function RenderPage() {
               value={frameStart}
               onChange={(e) => setFrameStart(e.target.value)}
               min={1}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Frame End
             </label>
             <Input
@@ -161,12 +240,11 @@ export function RenderPage() {
               value={frameEnd}
               onChange={(e) => setFrameEnd(e.target.value)}
               min={1}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Resolution X
             </label>
             <Input
@@ -174,12 +252,11 @@ export function RenderPage() {
               value={resX}
               onChange={(e) => setResX(e.target.value)}
               min={1}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Resolution Y
             </label>
             <Input
@@ -187,12 +264,11 @@ export function RenderPage() {
               value={resY}
               onChange={(e) => setResY(e.target.value)}
               min={1}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="block text-sm text-[#6F6B66] mb-1">
               Output Format
             </label>
             <Select
@@ -216,18 +292,46 @@ export function RenderPage() {
         </Button>
       </form>
 
-      <div className="bg-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-white rounded-xl overflow-hidden border border-[#E5E1DB]">
+        {/* Header with view toggle */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5E1DB]">
+          <h3 className="font-medium text-sm text-[#2D2B28]">Job History</h3>
+          <div className="flex items-center gap-1 bg-[#EDEAE3] rounded-lg p-0.5">
+            <button
+              onClick={() => setAndPersistViewMode("list")}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                viewMode === "list"
+                  ? "bg-white text-[#2D2B28] shadow-sm"
+                  : "text-[#6F6B66] hover:text-[#2D2B28]"
+              }`}
+            >
+              List
+            </button>
+            <button
+              onClick={() => setAndPersistViewMode("grid")}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                viewMode === "grid"
+                  ? "bg-white text-[#2D2B28] shadow-sm"
+                  : "text-[#6F6B66] hover:text-[#2D2B28]"
+              }`}
+            >
+              Grid
+            </button>
+          </div>
+        </div>
+
         {loading ? (
-          <div className="p-6 text-center text-gray-500">Loading...</div>
+          <div className="p-6 text-center text-[#B1ADA1]">Loading...</div>
         ) : jobs.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
+          <div className="p-6 text-center text-[#B1ADA1]">
             No render jobs yet
           </div>
-        ) : (
+        ) : viewMode === "list" ? (
+          /* ===== LIST VIEW ===== */
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
-                <tr className="border-b border-gray-700 text-gray-400 text-left">
+                <tr className="border-b border-[#E5E1DB] text-[#6F6B66] text-left">
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Engine</th>
                   <th className="px-4 py-3 font-medium">Frames</th>
@@ -239,7 +343,7 @@ export function RenderPage() {
               </thead>
               <tbody>
                 {jobs.map((job) => (
-                  <tr key={job.id} className="border-b border-gray-700/50">
+                  <tr key={job.id} className="border-b border-[#EDEBE6]">
                     <td className="px-4 py-3">
                       <span
                         className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status] || ""}`}
@@ -248,6 +352,7 @@ export function RenderPage() {
                         {job.status === "rendering" &&
                           ` (${job.frames_done}/${totalFrames(job)})`}
                       </span>
+                      <ProgressBar job={job} />
                     </td>
                     <td className="px-4 py-3 capitalize">{job.engine}</td>
                     <td className="px-4 py-3">
@@ -261,8 +366,8 @@ export function RenderPage() {
                         ? `$${job.cost_nzd.toFixed(4)}`
                         : "-"}
                     </td>
-                    <td className="px-4 py-3 text-gray-400">
-                      {new Date(job.created_at).toLocaleDateString()}
+                    <td className="px-4 py-3 text-[#6F6B66]">
+                      <RelativeTime date={job.created_at} />
                     </td>
                     <td className="px-4 py-3 space-x-2">
                       {job.download_url && (
@@ -270,7 +375,7 @@ export function RenderPage() {
                           href={job.download_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-blue-400 hover:text-blue-300 text-xs"
+                          className="text-[#C15F3C] hover:text-[#A84E30] text-xs"
                         >
                           Download
                         </a>
@@ -281,14 +386,14 @@ export function RenderPage() {
                           onClick={() => handleCancel(job.id)}
                           variant="ghost"
                           size="sm"
-                          className="text-red-400 hover:text-red-300 text-xs h-auto py-1"
+                          className="text-[#C62828] hover:text-[#B71C1C] text-xs h-auto py-1"
                         >
                           Cancel
                         </Button>
                       )}
                       {job.error_message && (
                         <span
-                          className="text-red-400 text-xs"
+                          className="text-[#C62828] text-xs"
                           title={job.error_message}
                         >
                           Error
@@ -299,6 +404,107 @@ export function RenderPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        ) : (
+          /* ===== GRID VIEW ===== */
+          <div className="p-4 space-y-4">
+            {/* Non-completed jobs as a compact list */}
+            {nonCompletedJobs.length > 0 && (
+              <div className="space-y-2">
+                {nonCompletedJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-[#E5E1DB] px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`inline-block shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status] || ""}`}
+                      >
+                        {job.status}
+                        {job.status === "rendering" &&
+                          ` (${job.frames_done}/${totalFrames(job)})`}
+                      </span>
+                      <span className="text-[#6F6B66] capitalize truncate">
+                        {job.engine} &middot; {job.frame_start}-{job.frame_end} &middot;{" "}
+                        {job.resolution_x}x{job.resolution_y}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[#6F6B66] text-xs">
+                        <RelativeTime date={job.created_at} />
+                      </span>
+                      {(job.status === "queued" ||
+                        job.status === "rendering") && (
+                        <Button
+                          onClick={() => handleCancel(job.id)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#C62828] hover:text-[#B71C1C] text-xs h-auto py-1"
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      {job.error_message && (
+                        <span
+                          className="text-[#C62828] text-xs"
+                          title={job.error_message}
+                        >
+                          Error
+                        </span>
+                      )}
+                    </div>
+                    <ProgressBar job={job} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Completed jobs as cards */}
+            {completedJobs.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {completedJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="rounded-xl border border-[#E5E1DB] bg-[#FAFAF8] p-4 flex flex-col items-center gap-3 text-center"
+                  >
+                    <CubeIcon />
+                    <div className="space-y-1 w-full">
+                      <p className="text-sm font-medium capitalize">
+                        {job.engine}
+                      </p>
+                      <p className="text-xs text-[#6F6B66]">
+                        {job.resolution_x}x{job.resolution_y} &middot; Frames{" "}
+                        {job.frame_start}-{job.frame_end}
+                      </p>
+                      <p className="text-xs text-[#6F6B66]">
+                        <RelativeTime date={job.created_at} />
+                      </p>
+                      {job.cost_nzd !== null && (
+                        <p className="text-xs text-[#6F6B66]">
+                          ${job.cost_nzd.toFixed(4)}
+                        </p>
+                      )}
+                    </div>
+                    {job.download_url && (
+                      <a
+                        href={job.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center rounded-lg bg-[#C15F3C] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#A84E30] transition-colors w-full"
+                      >
+                        Download
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {completedJobs.length === 0 && nonCompletedJobs.length === 0 && (
+              <div className="p-6 text-center text-[#B1ADA1]">
+                No render jobs yet
+              </div>
+            )}
           </div>
         )}
       </div>

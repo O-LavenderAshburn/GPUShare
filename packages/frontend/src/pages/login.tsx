@@ -12,17 +12,72 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [bootstrapToken, setBootstrapToken] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  async function handleGuestLogin() {
+    setError("");
+    setGuestLoading(true);
+    try {
+      const res = await authApi.guestLogin();
+      setToken(res.access_token);
+      trigger("success");
+      router.navigate({ to: "/chat" });
+    } catch (err) {
+      trigger("error");
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setGuestLoading(false);
+    }
+  }
+
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setResetLoading(true);
+    try {
+      await authApi.requestPasswordReset(email);
+      trigger("success");
+      setResetEmailSent(true);
+    } catch (err) {
+      trigger("error");
+      setError(err instanceof Error ? err.message : "An error occurred");
+    } finally {
+      setResetLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setNotice("");
     setLoading(true);
     try {
-      const res = isSignup
-        ? await authApi.signup({ email, password, name: name || undefined })
-        : await authApi.login({ email, password });
+      if (isSignup) {
+        const signup = await authApi.signup({
+          email,
+          password,
+          name: name || undefined,
+          bootstrap_token: bootstrapToken || undefined,
+        });
+
+        if (signup.status !== "active") {
+          trigger("success");
+          setIsSignup(false);
+          setBootstrapToken("");
+          setPassword("");
+          setNotice("Account created. An admin must approve it before you can sign in.");
+          return;
+        }
+      }
+
+      const res = await authApi.login({ email, password });
       setToken(res.access_token);
       trigger("success");
       router.navigate({ to: "/chat" });
@@ -35,30 +90,71 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4 pb-20 md:pb-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F3EE] p-4 pb-20 md:pb-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">{branding.appName}</h1>
-          <p className="text-gray-400 mt-2">{branding.tagline}</p>
+          <h1 className="text-3xl font-bold text-[#2D2B28]">
+            {branding.appName}
+          </h1>
+          <p className="text-[#B1ADA1] mt-2">{branding.tagline}</p>
         </div>
 
         <form
-          onSubmit={handleSubmit}
-          className="bg-gray-800 rounded-xl p-6 space-y-4"
+          onSubmit={forgotPassword ? handleForgotPassword : handleSubmit}
+          className="bg-white rounded-xl p-6 space-y-4 border border-[#E5E1DB] shadow-sm"
         >
-          <h2 className="text-lg font-semibold">
-            {isSignup ? "Create Account" : "Sign In"}
+          <h2 className="text-lg font-semibold text-[#2D2B28]">
+            {forgotPassword ? "Reset Password" : isSignup ? "Create Account" : "Sign In"}
           </h2>
 
           {error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-200 text-sm rounded-lg p-3">
+            <div className="bg-[#FFEBEE] border border-[#FFCDD2] text-[#C62828] text-sm rounded-lg p-3">
               {error}
             </div>
           )}
 
+          {notice && (
+            <div className="bg-[#E8F5E9] border border-[#C8E6C9] text-[#2E7D32] text-sm rounded-lg p-3">
+              {notice}
+            </div>
+          )}
+
+          {resetEmailSent && (
+            <div className="bg-[#E8F5E9] border border-[#C8E6C9] text-[#2E7D32] text-sm rounded-lg p-3">
+              If that email exists, a reset link has been sent. Check your inbox.
+            </div>
+          )}
+
+          {forgotPassword ? (
+            <>
+              <div>
+                <label className="block text-sm text-[#6F6B66] mb-1">Email</label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <Button type="submit" disabled={resetLoading || resetEmailSent} className="w-full" size="lg">
+                {resetLoading ? "Sending..." : "Send Reset Link"}
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() => { setForgotPassword(false); setError(""); setResetEmailSent(false); }}
+                variant="ghost"
+                className="w-full"
+              >
+                Back to sign in
+              </Button>
+            </>
+          ) : (<>
+
           {isSignup && (
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Name</label>
+              <label className="block text-sm text-[#6F6B66] mb-1">Name</label>
               <Input
                 type="text"
                 value={name}
@@ -67,8 +163,25 @@ export function LoginPage() {
             </div>
           )}
 
+          {isSignup && (
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">
+                Bootstrap Token
+              </label>
+              <Input
+                type="password"
+                value={bootstrapToken}
+                onChange={(e) => setBootstrapToken(e.target.value)}
+                placeholder="Required for the first admin only"
+              />
+              <p className="text-xs text-[#B1ADA1] mt-1">
+                Needed only when creating the initial admin account.
+              </p>
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Email</label>
+            <label className="block text-sm text-[#6F6B66] mb-1">Email</label>
             <Input
               type="email"
               value={email}
@@ -78,7 +191,9 @@ export function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Password</label>
+            <label className="block text-sm text-[#6F6B66] mb-1">
+              Password
+            </label>
             <Input
               type="password"
               value={password}
@@ -97,6 +212,8 @@ export function LoginPage() {
             onClick={() => {
               setIsSignup(!isSignup);
               setError("");
+              setNotice("");
+              setBootstrapToken("");
             }}
             variant="ghost"
             className="w-full"
@@ -105,7 +222,45 @@ export function LoginPage() {
               ? "Already have an account? Sign in"
               : "Don't have an account? Sign up"}
           </Button>
+
+          {!isSignup && (
+            <Button
+              type="button"
+              onClick={() => { setForgotPassword(true); setError(""); setResetEmailSent(false); }}
+              variant="ghost"
+              className="w-full text-sm"
+            >
+              Forgot password?
+            </Button>
+          )}
+          </>)}
         </form>
+
+        <div className="mt-4">
+          <Button
+            onClick={handleGuestLogin}
+            disabled={guestLoading}
+            variant="ghost"
+            className="w-full border border-[#E5E1DB]"
+          >
+            {guestLoading ? "Loading..." : "👀 Look around without signing in"}
+          </Button>
+          <p className="text-center text-xs text-[#B1ADA1] mt-2">
+            Explore with limited access • Free cloud models only
+          </p>
+        </div>
+
+        <p className="text-center text-sm text-[#B1ADA1] mt-6">
+          Want to create your own instance?{" "}
+          <a
+            href="https://github.com/Slaymish/GPUShare/blob/main/docs/SETUP.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#C15F3C] hover:text-[#A84E30] underline"
+          >
+            See the setup guide
+          </a>
+        </p>
       </div>
     </div>
   );

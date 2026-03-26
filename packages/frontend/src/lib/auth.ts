@@ -26,14 +26,24 @@ interface TokenPayload {
   exp: number;
 }
 
-export function parseToken(): TokenPayload | null {
+export function parseToken(): {
+  sub: string;
+  role: string;
+  exp: number;
+} | null {
   const token = getToken();
   if (!token) return null;
   try {
-    const base64 = token.split(".")[1];
-    const json = atob(base64);
-    return JSON.parse(json) as TokenPayload;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1]));
+    return payload;
   } catch {
     return null;
   }
+}
+
+export function isGuest(): boolean {
+  const payload = parseToken();
+  return payload?.role === "guest" || payload?.sub === "guest";
 }

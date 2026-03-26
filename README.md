@@ -1,19 +1,58 @@
-# GPU Node
+# GPUShare
 
-Share your GPU compute — AI inference and 3D rendering — with trusted users at electricity cost. Self-hostable, fully automated billing, deployable in under an hour.
+![GitHub stars](https://img.shields.io/github/stars/Slaymish/GPUShare?style=social)
+![License](https://img.shields.io/github/license/Slaymish/GPUShare)
+![Docker](https://img.shields.io/badge/docker-ready-blue)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
 
-## What it does
+> Turn your idle gaming GPU into a private AI & rendering server for friends and family — they only pay for electricity used.
 
-| Service      | API                               | Billed by          |
-| ------------ | --------------------------------- | ------------------ |
-| AI Inference | OpenAI-compatible chat API        | Per million tokens |
-| 3D Rendering | Blender job queue + file delivery | Per render-minute  |
+![GPUShare Dashboard Screenshot](screenshot.png)
 
-Costs are derived from your actual electricity rate and GPU wattage — no margins, no markups.
+## Why GPUShare?
 
-## How it works
+- **🔌 Fair pricing**: Users only pay actual electricity costs — no cloud markups
+- **🔒 Privacy first**: Your data never leaves the trusted group
+- **⚡ Zero waste**: That RTX 4090 mining dust? Now it's serving AI models
+- **🎮 Keep gaming**: Pause jobs instantly when you need your GPU back
+- **💳 No vendor lock-in**: Works with Ollama, OpenRouter, standard Blender
 
-Your PC runs a FastAPI proxy behind a Cloudflare Tunnel. A React frontend on Vercel handles the UI. A Postgres database (Neon/Supabase free tier) and Cloudflare R2 handle persistence. Stripe handles billing.
+### Who is this for?
+- **Indie teams** sharing a workstation GPU for development
+- **Friends** splitting the cost of AI experiments
+- **Families** with one powerful PC serving everyone's needs
+- **Students** pooling resources for coursework
+
+
+It runs two services off your GPU:
+
+| Service      | How                                  | Billed by          |
+| ------------ | ------------------------------------ | ------------------ |
+| AI Inference | Ollama (local) or OpenRouter (cloud) | Per million tokens |
+| 3D Rendering | Blender job queue                    | Per render-minute  |
+
+Costs are derived from your actual electricity rate and GPU wattage. You set `ELECTRICITY_RATE_KWH` and `GPU_INFERENCE_WATTS` in a `.env` file — all prices flow from that. No margins, no markup, no hardcoded rates.
+
+Users get a credit balance. They top up via Stripe (or you manually adjust their balance), use inference/rendering, and get a monthly invoice for what they owe. You're not making a business out of this — you're just not subsidising other people's GPU time.
+
+
+## What you need
+
+**Hardware:** Any GPU that can run Ollama models. The bigger the VRAM, the bigger the models you can load. A 12–16GB card handles 14B parameter models comfortably.
+
+**Software:**
+
+- Docker + Docker Compose
+- A free Postgres database — [Supabase](https://supabase.com) or [Neon](https://neon.tech) (free tier is fine)
+
+**Optional (can add later):**
+
+- Stripe — for card payments and invoicing
+- Cloudflare R2 — for render output storage (free tier is fine)
+- Resend — for email notifications
+- A custom domain — or use the free `trycloudflare.com` URL
+
+## How it fits together
 
 ```
 Vercel (always on)          Your PC (via Cloudflare Tunnel)
@@ -27,100 +66,67 @@ Neon / Supabase             Cloudflare R2
 
 The frontend and database stay reachable even when your PC is off. Users can check balances and view invoices any time. Only inference and render submission need your machine up.
 
-## Prerequisites
+Your machine never needs an open port. Traffic enters through a Cloudflare Tunnel — you run `cloudflared` on your machine and it maintains an outbound connection to Cloudflare's edge.
 
-- **Docker + Docker Compose**
-- **A free Postgres database** — [Supabase](https://supabase.com) or [Neon](https://neon.tech) (free tier is fine)
+## Setup
 
-Everything else (Ollama, Cloudflare Tunnel) is installed automatically by the setup script. Stripe, R2, and Resend are optional and can be added later.
+### One-click install (easiest)
 
-## Quick start
-
-```bash
-git clone https://github.com/yourname/gpu-node.git
-cd gpu-node
-pnpm install      # Install all dependencies
-pnpm dev          # Start frontend and backend together
-```
-
-Or use the automated setup:
+**macOS / Linux** — paste this into your terminal:
 
 ```bash
-./setup.sh        # macOS / Linux
-# or
-.\setup.ps1       # Windows (PowerShell)
+curl -fsSL https://raw.githubusercontent.com/Slaymish/GPUShare/main/install.sh | bash
 ```
 
-## Available Scripts
+**Windows** — double-click `setup.bat`, or in PowerShell:
 
-All scripts can be run from the root directory using `pnpm <script>`:
+```powershell
+.\setup.bat
+```
 
-### Development
+**Fully silent install** (no prompts, all defaults):
 
-- `pnpm dev` - Start both frontend and backend in parallel
-- `pnpm dev:frontend` - Start frontend dev server only (Vite)
-- `pnpm dev:server` - Start backend with Docker Compose
+```bash
+./setup.sh --quick                # macOS / Linux
+.\setup.ps1 -Quick                # Windows
+.\setup.bat --quick               # Windows (via .bat)
+```
 
-### Building
+### What the installer does
 
-- `pnpm build` - Build frontend for production
-- `pnpm build:frontend` - Same as above
+The setup script auto-detects your GPU and OS, then:
 
-### Docker
+1. **Checks prerequisites** — Docker, Git, port availability
+2. **Installs Ollama** — via Homebrew (macOS), winget (Windows), or official script (Linux)
+3. **Recommends a model** — based on your GPU VRAM (4B for 4GB, 8B for 8GB, 14B for 16GB, 32B for 24GB+)
+4. **Asks for your database URL** — with instructions for free Supabase/Neon setup
+5. **Configures your node** — electricity rate, GPU wattage (auto-estimated), name
+6. **Optional integrations** — Stripe billing, OpenRouter, 3D rendering, email
+7. **Builds and starts Docker services** — with health checks
+8. **Optionally starts a Cloudflare tunnel** — free public URL, no account needed
 
-- `pnpm docker:up` - Start all Docker services in background
-- `pnpm docker:down` - Stop all Docker services
-- `pnpm docker:logs` - Follow logs from all services
-- `pnpm docker:restart` - Restart all services
-- `pnpm docker:rebuild` - Rebuild and restart all services
+Total time: ~10 minutes (interactive) or ~5 minutes (--quick).
 
-### Backend/Server
+### Script options
 
-- `pnpm server:logs` - Follow FastAPI server logs
-- `pnpm server:shell` - Open bash shell in FastAPI container
+| Flag | Description |
+|------|-------------|
+| `--quick` / `-Quick` | Non-interactive, use all defaults |
+| `--skip-ollama` | Don't install Ollama or pull models |
+| `--skip-tunnel` | Don't start Cloudflare tunnel |
+| `--dry-run` | Show what would happen without executing |
 
-### Database
+### Manual setup
 
-- `pnpm db:migrate` - Run database migrations
-- `pnpm db:revision` - Create new migration (requires message)
+**1. Install Ollama**
 
-### API Documentation
+```bash
+# macOS
+brew install ollama && brew services start ollama
 
-- `pnpm docs` - Show OpenAPI docs URL
-- `pnpm docs:open` - Open Swagger UI in browser
-- `pnpm swagger` - Open Swagger UI in browser
-- `pnpm redoc` - Open ReDoc in browser
-- `pnpm openapi` - Download OpenAPI spec to `openapi.json`
+### Manual setup
 
-### Testing & Linting
-
-- `pnpm test:frontend` - Run frontend tests
-- `pnpm lint:frontend` - Lint frontend code
-- `pnpm format` - Format frontend code
-
-### Utilities
-
-- `pnpm clean` - Clean all build artifacts and Docker volumes
-- `pnpm install:all` - Install dependencies for all packages
-
-The setup script will:
-
-1. Install Ollama and pull a model
-2. Ask for your database URL (with instructions for free Supabase/Neon setup)
-3. Configure your node (electricity rate, name, optional services)
-4. Build and start the Docker services
-5. Start a Cloudflare tunnel and give you a public URL
-6. Tell you exactly how to deploy the frontend to Vercel
-
-Total time: ~10 minutes, no prior knowledge needed.
-
-## Manual setup
-
-If you prefer to set things up yourself:
-
-### 2. Install Ollama
-
-If you have a GPU, install Ollama natively for best performance:
+**1. Install Ollama**
 
 ```bash
 # macOS
@@ -129,58 +135,38 @@ brew install ollama && brew services start ollama
 # Linux
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Pull your models
-ollama pull qwen2.5:14b
+ollama pull qwen2.5:14b   # or whatever model you want to serve
 ```
 
-### 3. Start the server
+**2. Start the server**
 
 ```bash
 docker compose up -d
 ```
 
-This starts:
+This starts `fastapi` on `localhost:8000` and the render worker. Ollama runs natively on the host and is reached via `host.docker.internal:11434`.
 
-- `fastapi` on `localhost:8000`
-- `render-worker` polling the job queue
-
-Ollama runs natively on the host and is reached via `host.docker.internal:11434`.
-
-### 4. Expose your server
-
-**Quick start (no domain needed):**
+**3. Expose your server**
 
 ```bash
+# No account needed, URL changes on restart:
 cloudflared tunnel --url http://localhost:8000
-```
 
-This gives you a free `https://xxx-yyy-zzz.trycloudflare.com` URL instantly. No account required. The URL changes each restart.
-
-**With your own domain:**
-
-```bash
-brew install cloudflared   # or: apt install cloudflared
+# Or with your own domain (persistent URL):
 cloudflared tunnel login
-cloudflared tunnel create gpu-node
-cloudflared tunnel route dns gpu-node gpu.yourdomain.com
-cloudflared tunnel token gpu-node
-# Copy the token into .env as TUNNEL_TOKEN
-cloudflared tunnel run gpu-node
+cloudflared tunnel create gpushare
+cloudflared tunnel route dns gpushare gpu.yourdomain.com
+cloudflared tunnel token gpushare   # add TUNNEL_TOKEN to .env
+cloudflared tunnel run gpushare
 ```
 
-### 5. Deploy the frontend
+**4. Deploy the frontend**
 
-Connect the repo to Vercel. Set the root directory to `packages/frontend` and add one environment variable:
+Connect the repo to Vercel and set the root directory to `packages/frontend`. No environment variables needed — `vercel.json` proxies `/v1/*` and `/health` requests to your server automatically.
 
-```
-VITE_API_URL=https://gpu.yourdomain.com
-```
+**5. Point Stripe webhooks (if using Stripe)**
 
-Or use the `trycloudflare.com` URL from step 4 if you don't have a domain.
-
-### 5. Point Stripe webhooks
-
-In the Stripe dashboard, add a webhook endpoint:
+Add a webhook endpoint in the Stripe dashboard:
 
 ```
 https://your-vercel-app.vercel.app/api/webhooks/stripe
@@ -188,11 +174,9 @@ https://your-vercel-app.vercel.app/api/webhooks/stripe
 
 Events needed: `invoice.paid`, `invoice.payment_failed`, `checkout.session.completed`
 
----
-
 ## Configuration
 
-All config lives in `.env`. See [ARCHITECTURE.md](./ARCHITECTURE.md#8-configuration-reference) for the full reference. Key values to set:
+All config lives in `.env`. Key values:
 
 ```env
 # Your electricity rate drives all cost calculations
@@ -203,59 +187,61 @@ GPU_INFERENCE_WATTS=150
 GPU_RENDER_WATTS=300
 SYSTEM_WATTS=80
 
-# Access control
+# Access control — recommended when sharing with a small group
 INVITE_ONLY=true
 REQUIRE_APPROVAL=true
 ADMIN_EMAIL=you@example.com
 ```
 
-## Billing model
-
-Costs are calculated in real time from your electricity rate and GPU wattage — no hardcoded prices. Change `ELECTRICITY_RATE_KWH` and all future usage reprices automatically.
-
-Users run a postpaid balance. They get soft warnings at $0 and -$5, and a hard block at -$20 (configurable per user). Monthly invoices are generated automatically and charged via Stripe.
+Change `ELECTRICITY_RATE_KWH` and all future usage reprices automatically. Past ledger entries are not touched.
 
 ## API
 
-The inference API is OpenAI-compatible — any client that works with OpenAI's API works here without modification.
+The inference endpoint is OpenAI-compatible — any client that works with OpenAI works here without modification:
 
 ```bash
-# Chat completion
-curl https://gpu.yourdomain.com/v1/inference/chat/completions \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl https://gpu.yourdomain.com/v1/chat/completions \
+  -H "Authorization: Bearer gpus_sk_YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model": "qwen2.5:14b", "messages": [{"role": "user", "content": "Hello"}]}'
-
-# List models
-curl https://gpu.yourdomain.com/v1/inference/models \
-  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-Render jobs, account management, and admin endpoints are documented in [ARCHITECTURE.md](./ARCHITECTURE.md#6-api-reference).
+Both `/v1/chat/completions` and `/v1/inference/chat/completions` are supported. Models with a `/` in the ID (e.g. `anthropic/claude-3.5-sonnet`) are automatically routed through OpenRouter.
 
-## Build order
+## Billing model
 
-If you're building from scratch, the recommended sequence is:
-
-| Phase | What                                                    | Est. effort |
-| ----- | ------------------------------------------------------- | ----------- |
-| 1     | DB schema, FastAPI skeleton, JWT auth                   | 4–6 hrs     |
-| 2     | Ollama proxy, token counting, ledger writes             | 3–4 hrs     |
-| 3     | Stripe top-up, monthly invoices, webhooks               | 4–5 hrs     |
-| 4     | R2 storage, render job submission, Blender worker       | 6–8 hrs     |
-| 5     | Chat UI, Render UI, Account dashboard                   | 4–6 hrs     |
-| 6     | Admin dashboard, email notifications, file sanitisation | 3–4 hrs     |
-
-> Build phases 1–3 first. The billing foundation is the hardest thing to retrofit — every other feature depends on it.
+Users run a postpaid balance. Soft warnings at $0 and -$5, hard block at -$20 (configurable per user). Monthly invoices are generated automatically. If you're not using Stripe, you can manage balances manually through the admin panel.
 
 ## Security notes
 
-- `.blend` files are sanitised before queuing (embedded Python scripts stripped)
-- API keys are stored as bcrypt hashes only — shown once on creation
+- `.blend` files are sanitised before queuing — embedded Python scripts are stripped via headless Blender before the file is stored
+- API keys are stored as bcrypt hashes only, shown once on creation
 - Ollama is never exposed through the tunnel (localhost only)
-- All traffic enters via Cloudflare Tunnel — no open ports required
+- All inbound traffic enters via Cloudflare Tunnel — no open ports required on your machine
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md#7-security) for full security details.
+## Available scripts
+
+```bash
+pnpm dev              # frontend + backend together
+pnpm docker:up        # start all Docker services
+pnpm docker:logs      # follow logs
+pnpm docker:rebuild   # rebuild and restart
+pnpm db:migrate       # run migrations
+pnpm db:revision      # create new migration
+```
+
+## Contributing
+
+I would love help! Check out:
+- [Roadmap & feature requests](https://github.com/Slaymish/GPUShare/discussions)
+- [Development setup guide](CONTRIBUTING.md)
+
+**Current priorities:**
+- [ ] NVIDIA GPU monitoring dashboard
+- [ ] AMD GPU support
+- [ ] Automatic job scheduling
+- [ ] Mobile app
+- [x] One-click installer (Windows, macOS, Linux)
 
 ## License
 

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useWebHaptics } from "../lib/haptics";
-import { auth as authApi, billing, getHealth } from "../lib/api";
+import { auth as authApi, billing, account as accountApi } from "../lib/api";
 import type { HealthResponse } from "../lib/api";
 import type { UserResponse, ApiKeyResponse } from "@shared/types/auth";
 import type {
@@ -8,16 +8,136 @@ import type {
   UsageLogResponse,
   InvoiceResponse,
 } from "@shared/types/billing";
-import { Button, Input } from "../components/ui";
+import { Button, Input, StatCard, RelativeTime } from "../components/ui";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "../components/ui/select";
+import { useTheme } from "../theme-provider";
+import { type ThemeName, THEME_LABELS } from "../theme.config";
 import { PaymentMethodSetup } from "../components/PaymentMethodSetup";
+import { OnboardingModal } from "../components/OnboardingModal";
+import { McpSettings } from "../components/McpSettings";
+import { fmtUsd } from "../lib/format";
+import { isGuest, clearToken } from "../lib/auth";
+import { router } from "../router";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+function SkeletonBlock({ className = "" }: { className?: string }) {
+  return <div className={`bg-[#E5E1DB] rounded animate-pulse ${className}`} />;
+}
+
+function AccountSkeleton() {
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-5xl pb-20 md:pb-0 w-full">
+      <SkeletonBlock className="h-6 w-32" />
+
+      {/* Balance card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-3 w-16 mb-2" />
+        <SkeletonBlock className="h-9 w-28 mb-3" />
+        <div className="flex gap-4">
+          <SkeletonBlock className="h-3 w-28" />
+          <SkeletonBlock className="h-3 w-20" />
+          <SkeletonBlock className="h-3 w-24" />
+        </div>
+      </div>
+
+      {/* Usage limit card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-4 w-24 mb-2" />
+        <SkeletonBlock className="h-3 w-72 mb-3" />
+        <SkeletonBlock className="h-9 w-48" />
+      </div>
+
+      {/* Profile card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <SkeletonBlock className="h-4 w-16 mb-3" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonBlock key={i} className="h-3 w-32" />
+          ))}
+        </div>
+      </div>
+
+      {/* API Keys card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB] space-y-4">
+        <SkeletonBlock className="h-4 w-20" />
+        <SkeletonBlock className="h-9 w-full" />
+        <SkeletonBlock className="h-3 w-24" />
+      </div>
+
+      {/* Usage Log card */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB] space-y-4">
+        <SkeletonBlock className="h-4 w-24" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonBlock key={i} className="h-3 w-full" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ChartSegment {
+  label: string;
+  value: number;
+  color: string;
+}
+
+function DonutChart({ segments }: { segments: ChartSegment[] }) {
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+  if (total === 0) return null;
+
+  let accumulated = 0;
+  const gradientParts = segments.map((s) => {
+    const pct = (s.value / total) * 100;
+    const start = accumulated;
+    accumulated += pct;
+    return `${s.color} ${start}% ${accumulated}%`;
+  });
+
+  return (
+    <div
+      className="w-24 h-24 rounded-full flex-shrink-0 flex items-center justify-center"
+      style={{ background: `conic-gradient(${gradientParts.join(", ")})` }}
+    >
+      <div className="w-14 h-14 rounded-full bg-white" />
+    </div>
+  );
+}
+
+function PieChart({ segments }: { segments: ChartSegment[] }) {
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+  if (total === 0) return null;
+
+  let accumulated = 0;
+  const gradientParts = segments.map((s) => {
+    const pct = (s.value / total) * 100;
+    const start = accumulated;
+    accumulated += pct;
+    return `${s.color} ${start}% ${accumulated}%`;
+  });
+
+  return (
+    <div
+      className="w-24 h-24 rounded-full flex-shrink-0"
+      style={{ background: `conic-gradient(${gradientParts.join(", ")})` }}
+    />
+  );
+}
+
 export function AccountPage() {
   const { trigger } = useWebHaptics();
+  const { activeTheme, setActiveTheme } = useTheme();
+  const [themeSaving, setThemeSaving] = useState(false);
   const [user, setUser] = useState<UserResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [usage, setUsage] = useState<UsageLogResponse[]>([]);
+  const [allUsage, setAllUsage] = useState<UsageLogResponse[]>([]);
   const [usageOffset, setUsageOffset] = useState(0);
   const [invoices, setInvoices] = useState<InvoiceResponse[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyResponse[]>([]);
@@ -41,68 +161,92 @@ export function AccountPage() {
   const [setupClientSecret, setSetupClientSecret] = useState<string | null>(
     null,
   );
+  const [dismissed, setDismissed] = useState(false);
+  const [guideTab, setGuideTab] = useState<
+    "curl" | "python" | "claude-code" | "openclaw" | "opencode"
+  >("curl");
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [resetRequesting, setResetRequesting] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
+  const [autoLightModel, setAutoLightModel] = useState("");
+  const [autoHeavyModel, setAutoHeavyModel] = useState("");
+  const [autoThreshold, setAutoThreshold] = useState(2000);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const billingEnabled =
     (health?.integrations?.billing && health?.integrations?.stripe) ?? false;
 
-  function fetchAll() {
-    Promise.all([
-      authApi
-        .getMe()
-        .then((u) => {
-          setUser(u);
-          setLimitInput(String(u.hard_limit_nzd));
-        })
-        .catch(() => {}),
-      billing
-        .getBalance()
-        .then(setBalance)
-        .catch(() => {}),
-      billing
-        .getUsage(50, usageOffset)
-        .then(setUsage)
-        .catch(() => {}),
-      billing
-        .getInvoices()
-        .then(setInvoices)
-        .catch(() => {}),
-      authApi
-        .listApiKeys()
-        .then(setApiKeys)
-        .catch(() => {}),
-      getHealth()
-        .then(setHealth)
-        .catch(() => {}),
-      billing
-        .listPaymentMethods()
-        .then(setPaymentMethods)
-        .catch(() => {}),
-    ]).finally(() => setLoading(false));
-  }
+  // Compute usage statistics — use server-computed totals from balance for costs (accurate),
+  // and allUsage for per-model breakdown.
+  const usageStats = useMemo(() => {
+    let cloudInferenceCount = 0;
+    let localInferenceCount = 0;
+    const modelCosts: Record<string, number> = {};
 
-  useEffect(() => {
-    Promise.all([
-      authApi.getMe(),
-      billing.getBalance(),
-      billing.getUsage(),
-      billing.getInvoices(),
-      authApi.listApiKeys(),
-      getHealth(),
-      billing.listPaymentMethods(),
-    ])
-      .then(([u, b, usage, inv, keys, h, pm]) => {
+    for (const u of allUsage) {
+      const isCloud = u.model.includes("/");
+      if (isCloud) cloudInferenceCount++;
+      else localInferenceCount++;
+      modelCosts[u.model] = (modelCosts[u.model] || 0) + u.cost_nzd;
+    }
+
+    // Use server-computed totals for accuracy (not limited by pagination)
+    const cloudInferenceCost = balance?.total_cloud_inference_cost_nzd ?? 0;
+    const totalInferenceCost = balance?.total_inference_cost_nzd ?? 0;
+    const localInferenceCost = totalInferenceCost - cloudInferenceCost;
+    const renderCost = balance?.total_render_cost_nzd ?? 0;
+
+    const totalKwh = allUsage.reduce((sum, u) => sum + u.kwh, 0);
+
+    const topModels = Object.entries(modelCosts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return {
+      inferenceCount: allUsage.length,
+      cloudInferenceCost,
+      localInferenceCost,
+      cloudInferenceCount,
+      localInferenceCount,
+      totalKwh,
+      inferenceCost: totalInferenceCost,
+      renderCost,
+      totalUsed: balance?.total_used_nzd ?? 0,
+      topModels,
+    };
+  }, [allUsage, balance]);
+
+  function fetchAll() {
+    accountApi
+      .getPage()
+      .then((data) => {
+        const u = data.user;
         setUser(u);
-        setBalance(b);
-        setUsage(usage);
-        setInvoices(inv);
-        setApiKeys(keys);
-        setHealth(h);
-        setPaymentMethods(pm);
-        setLimitInput(u.hard_limit_nzd.toString());
+        setBalance(data.balance);
+        setUsage(data.usage_recent);
+        setAllUsage(data.usage_all);
+        setInvoices(data.invoices);
+        setApiKeys(data.api_keys);
+        setHealth(data.health);
+        setPaymentMethods(data.payment_methods);
+        setLimitInput(String(u.hard_limit_nzd));
+        setEditName(u.name || "");
+        setEditEmail(u.email);
+        if (u.theme) setActiveTheme(u.theme as ThemeName);
+        setAutoLightModel(u.auto_light_model || "");
+        setAutoHeavyModel(u.auto_heavy_model || "");
+        setAutoThreshold(u.auto_token_threshold || 2000);
+        setAvailableModels(
+          (data.models.data ?? []).filter((m) => m.id !== "auto").map((m) => m.id),
+        );
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }
 
   useEffect(() => {
     fetchAll();
@@ -153,28 +297,176 @@ export function AccountPage() {
     try {
       const res = await authApi.updateMyLimit(Number(limitInput));
       setLimitInput(String(res.hard_limit_nzd));
+      setUser((prev) => prev ? { ...prev, hard_limit_nzd: res.hard_limit_nzd } : prev);
+      setBalance((prev) => prev ? { ...prev, hard_limit_nzd: res.hard_limit_nzd } : prev);
       trigger("success");
     } catch {}
     setLimitSaving(false);
   }
 
-  function balanceColor(b: number): string {
-    if (b > 20) return "text-green-400";
-    if (b > 10) return "text-yellow-400";
-    if (b > 0) return "text-orange-400";
-    return "text-red-400";
+  async function handleSaveProfile() {
+    setProfileSaving(true);
+    try {
+      const updated = await authApi.updateMe({
+        name: editName || undefined,
+        email: editEmail,
+      });
+      setUser(updated);
+      setEditName(updated.name || "");
+      setEditEmail(updated.email);
+      trigger("success");
+    } catch (err) {
+      trigger("error");
+    }
+    setProfileSaving(false);
   }
 
-  if (loading) return <div className="p-6 text-gray-500">Loading...</div>;
+  async function handleThemeChange(name: ThemeName) {
+    setActiveTheme(name);
+    setThemeSaving(true);
+    try {
+      const updated = await authApi.updateMe({ theme: name });
+      setUser(updated);
+      trigger("success");
+    } catch {
+      trigger("error");
+    }
+    setThemeSaving(false);
+  }
+
+  async function handleRequestPasswordReset() {
+    if (!user?.email) return;
+    setResetRequesting(true);
+    setResetMessage("");
+    try {
+      const res = await authApi.requestPasswordReset(user.email);
+      setResetMessage(res.message);
+      trigger("success");
+    } catch (err) {
+      setResetMessage("Failed to send reset email");
+      trigger("error");
+    }
+    setResetRequesting(false);
+  }
+
+  function balanceColor(b: number): string {
+    if (b > 20) return "text-[#2E7D32]";
+    if (b > 10) return "text-[#E65100]";
+    if (b > 0) return "text-[#EF6C00]";
+    return "text-[#C62828]";
+  }
+
+  if (loading) return <AccountSkeleton />;
+
+  const curlSnippet = `curl ${API_URL}/v1/inference/chat/completions \\
+  -H "Authorization: Bearer ${revealedKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "llama3", "messages": [{"role": "user", "content": "Hello"}]}'`;
+
+  const pythonSnippet = `from openai import OpenAI
+client = OpenAI(base_url="${API_URL}/v1/inference", api_key="${revealedKey}")
+response = client.chat.completions.create(
+    model="llama3",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+print(response.choices[0].message.content)`;
+
+  const claudeCodeSnippet = `# Add to your shell profile (~/.zshrc or ~/.bashrc)
+export ANTHROPIC_BASE_URL="${API_URL}/v1"
+export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
+
+# Then restart Claude Code`;
+
+  const openClawConfig = JSON.stringify(
+    {
+      models: {
+        providers: {
+          gpushare: {
+            baseUrl: `${API_URL}/v1`,
+            apiKey: revealedKey,
+            api: "openai-completions",
+            models: [
+              {
+                id: "gpt-4",
+                name: "GPUShare GPT-4",
+                reasoning: false,
+                input: ["text"],
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+                contextWindow: 128000,
+                maxTokens: 4096,
+              },
+            ],
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const openCodeBashSnippet = `curl -fsSL ${API_URL}/setup-opencode.sh | bash -s -- --key "${revealedKey}" --url "${API_URL}"`;
+
+  const openCodePsSnippet = `irm ${API_URL}/setup-opencode.ps1 -OutFile setup.ps1; .\\setup.ps1 -Key "${revealedKey}" -Url "${API_URL}"`;
+
+  // Donut chart percentages
+  const totalCostForDonut = usageStats.cloudInferenceCost + usageStats.localInferenceCost + usageStats.renderCost;
+  const cloudInferencePct =
+    totalCostForDonut > 0
+      ? (usageStats.cloudInferenceCost / totalCostForDonut) * 100
+      : 0;
+  const localInferencePct =
+    totalCostForDonut > 0
+      ? (usageStats.localInferenceCost / totalCostForDonut) * 100
+      : 0;
+  const renderPct =
+    totalCostForDonut > 0
+      ? (usageStats.renderCost / totalCostForDonut) * 100
+      : 0;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-5xl pb-20 md:pb-0 w-full">
+      {/* Low-balance sticky warning banner */}
+      {billingEnabled &&
+        balance &&
+        balance.balance_nzd < 5 &&
+        balance.balance_nzd > 0 &&
+        !dismissed && (
+          <div className="bg-[#FFF3E0] border border-[#FFE0B2] text-[#E65100] rounded-lg px-4 py-3 flex items-center justify-between text-sm">
+            <span>
+              Low balance: {fmtUsd(balance.balance_nzd)} NZD remaining{" "}
+              <button
+                onClick={() => {
+                  const topUpSection = document.getElementById("balance-card");
+                  topUpSection?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="underline font-medium hover:text-[#BF360C]"
+              >
+                Top up
+              </button>
+            </span>
+            <button
+              onClick={() => setDismissed(true)}
+              className="ml-4 text-[#E65100] hover:text-[#BF360C] font-medium"
+            >
+              x
+            </button>
+          </div>
+        )}
+
       <h2 className="text-lg font-semibold">Account</h2>
 
-      {/* Balance Card — only when billing enabled */}
+      {/* Balance Card */}
       {billingEnabled && balance && (
-        <div className="bg-gray-800 rounded-xl p-4 md:p-6">
-          <div className="text-sm text-gray-400 mb-1">
+        <div
+          id="balance-card"
+          className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]"
+        >
+          <div className="text-sm text-[#6F6B66] mb-1">
             {balance.billing_type === "postpaid" && balance.balance_nzd < 0
               ? "Current Debt"
               : balance.billing_type === "postpaid"
@@ -184,47 +476,82 @@ export function AccountPage() {
           <div
             className={`text-4xl font-bold ${balanceColor(balance.balance_nzd)}`}
           >
-            ${Math.abs(balance.balance_nzd).toFixed(2)}
+            {fmtUsd(balance.balance_nzd)}
           </div>
-          <div className="mt-3 text-sm text-gray-400 flex flex-wrap gap-x-4 gap-y-1">
+          <div className="mt-3 text-sm text-[#6F6B66] flex flex-wrap gap-x-4 gap-y-1">
             <span>
               This month:{" "}
-              <span className="text-white">
-                ${balance.this_month_usage_nzd.toFixed(2)}
+              <span className="text-[#2D2B28]">
+                {fmtUsd(balance.this_month_usage_nzd)}
               </span>
             </span>
             <span>
               Limit:{" "}
-              <span className="text-white">
-                ${balance.hard_limit_nzd.toFixed(2)}
+              <span className="text-[#2D2B28]">
+                {fmtUsd(balance.hard_limit_nzd)}
               </span>
             </span>
             <span>
               Type:{" "}
-              <span className="text-white capitalize">
+              <span className="text-[#2D2B28] capitalize">
                 {balance.billing_type}
               </span>
             </span>
           </div>
 
-          {balance.billing_type === "prepaid" && (
-            <div className="flex flex-wrap items-center gap-2 mt-4">
-              <span className="text-sm text-gray-400">$</span>
-              <Input
-                type="number"
-                value={topUpAmount}
-                onChange={(e) => setTopUpAmount(e.target.value)}
-                min={1}
-                className="w-24"
-              />
-              <Button
-                onClick={handleTopUp}
-                variant="success"
-                size="sm"
-                className="whitespace-nowrap"
-              >
-                Top Up
-              </Button>
+          {/* Credit balance breakdown */}
+          <div className="mt-2 text-sm text-[#6F6B66] flex flex-wrap gap-x-4 gap-y-1">
+            {balance.total_topped_up_nzd !== undefined && (
+              <span>
+                Total topped up:{" "}
+                <span className="text-[#2E7D32]">
+                  {fmtUsd(balance.total_topped_up_nzd)}
+                </span>
+              </span>
+            )}
+            {balance.total_used_nzd !== undefined && (
+              <span>
+                Total used:{" "}
+                <span className="text-[#C62828]">
+                  {fmtUsd(balance.total_used_nzd)}
+                </span>
+              </span>
+            )}
+          </div>
+
+          {balance.billing_type === "prepaid" && !isGuest() && (
+            <div className="mt-4 space-y-2">
+              <p className="text-xs text-[#6F6B66]">
+                Top up anytime to build credit. Your balance is used to pay for
+                inference and rendering as you go.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-[#6F6B66]">$</span>
+                <Input
+                  type="number"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  min={1}
+                  placeholder="Amount"
+                  className="w-24"
+                />
+                <Button
+                  onClick={handleTopUp}
+                  variant="success"
+                  size="sm"
+                  className="whitespace-nowrap"
+                >
+                  Top Up
+                </Button>
+              </div>
+            </div>
+          )}
+          {isGuest() && (
+            <div className="mt-4 bg-[#FFF3E0] border border-[#FFE0B2] rounded-lg p-3">
+              <p className="text-sm text-[#E65100]">
+                👋 You're in <strong>demo mode</strong>. Sign up to unlock full
+                features including local GPU models, rendering, and more.
+              </p>
             </div>
           )}
         </div>
@@ -232,27 +559,27 @@ export function AccountPage() {
 
       {/* Billing Information for Postpaid Users */}
       {billingEnabled && balance?.billing_type === "postpaid" && (
-        <div className="bg-gray-800 rounded-xl p-4 md:p-6">
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
           <h3 className="font-medium mb-3">Billing & Payments</h3>
 
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">
+              <h4 className="text-sm font-medium text-[#2D2B28] mb-2">
                 Invoice Schedule
               </h4>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-[#6F6B66]">
                 Invoices are automatically generated on the{" "}
-                <strong className="text-white">1st of each month</strong> for
-                the previous month's usage. You'll receive an email with your
-                invoice and payment instructions.
+                <strong className="text-[#2D2B28]">1st of each month</strong>{" "}
+                for the previous month's usage. You'll receive an email with
+                your invoice and payment instructions.
               </p>
             </div>
 
             <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">
+              <h4 className="text-sm font-medium text-[#2D2B28] mb-2">
                 Payment Methods
               </h4>
-              <p className="text-sm text-gray-400 mb-3">
+              <p className="text-sm text-[#6F6B66] mb-3">
                 You can pay invoices manually via the emailed link, or set up
                 automatic payments by adding a payment method below.
               </p>
@@ -262,11 +589,11 @@ export function AccountPage() {
                   {paymentMethods.map((pm) => (
                     <div
                       key={pm.id}
-                      className="flex items-center justify-between p-3 bg-gray-900/50 border border-gray-700 rounded-lg"
+                      className="flex items-center justify-between p-3 bg-[#F4F3EE] border border-[#E5E1DB] rounded-lg"
                     >
                       <div className="flex items-center gap-3">
                         <svg
-                          className="w-4 h-4 text-green-400"
+                          className="w-4 h-4 text-[#2E7D32]"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -279,10 +606,10 @@ export function AccountPage() {
                           />
                         </svg>
                         <div className="text-sm">
-                          <div className="text-gray-300 capitalize">
+                          <div className="text-[#2D2B28] capitalize">
                             {pm.card_brand} •••• {pm.card_last4}
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-[#B1ADA1]">
                             Expires {pm.card_exp_month}/{pm.card_exp_year}
                           </div>
                         </div>
@@ -303,7 +630,7 @@ export function AccountPage() {
                         }}
                         variant="ghost"
                         size="sm"
-                        className="text-red-400 hover:text-red-300"
+                        className="text-[#C62828] hover:text-[#B71C1C]"
                       >
                         Remove
                       </Button>
@@ -334,10 +661,10 @@ export function AccountPage() {
               )}
             </div>
 
-            <div className="pt-3 border-t border-gray-700">
-              <p className="text-xs text-gray-500">
+            <div className="pt-3 border-t border-[#E5E1DB]">
+              <p className="text-xs text-[#B1ADA1]">
                 Next invoice:{" "}
-                <strong className="text-gray-400">1st of next month</strong> •
+                <strong className="text-[#6F6B66]">1st of next month</strong> •
                 Covers usage from start to end of current month
               </p>
             </div>
@@ -345,17 +672,17 @@ export function AccountPage() {
         </div>
       )}
 
-      {/* Usage Limit — user can set their own */}
+      {/* Usage Limit */}
       {billingEnabled && user && (
-        <div className="bg-gray-800 rounded-xl p-4 md:p-6">
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
           <h3 className="font-medium mb-2">Usage Limit</h3>
-          <p className="text-sm text-gray-400 mb-3">
+          <p className="text-sm text-[#6F6B66] mb-3">
             {balance?.billing_type === "postpaid"
               ? "Maximum debt allowed before service is suspended. Set as a negative number (e.g., -20 for $20 debt limit)."
               : "Minimum balance required to continue service. You'll be blocked when your balance drops below this amount."}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-400">$</span>
+            <span className="text-sm text-[#6F6B66]">$</span>
             <Input
               type="number"
               value={limitInput}
@@ -377,36 +704,216 @@ export function AccountPage() {
       )}
 
       {/* User Info */}
-      {user && (
-        <div className="bg-gray-800 rounded-xl p-4 md:p-6">
+      {user && !isGuest() && (
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
           <h3 className="font-medium mb-3">Profile</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-            <span className="text-gray-400">Email</span>
-            <span>{user.email}</span>
-            <span className="text-gray-400">Name</span>
-            <span>{user.name || "-"}</span>
-            <span className="text-gray-400">Status</span>
-            <span className="capitalize">{user.status}</span>
-            <span className="text-gray-400">Role</span>
-            <span className="capitalize">{user.role}</span>
-            <span className="text-gray-400">Services</span>
-            <span>{user.services_enabled.join(", ") || "None"}</span>
-            <span className="text-gray-400">Member since</span>
-            <span>{new Date(user.created_at).toLocaleDateString()}</span>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Name</label>
+              <Input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Your name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Email</label>
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="your@email.com"
+              />
+            </div>
+            <Button
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              size="sm"
+            >
+              {profileSaving ? "Saving..." : "Save Changes"}
+            </Button>
+
+            <div className="pt-4 border-t border-[#E5E1DB]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <span className="text-[#6F6B66]">Status</span>
+                <span className="capitalize">{user.status}</span>
+                <span className="text-[#6F6B66]">Role</span>
+                <span className="capitalize">{user.role}</span>
+                <span className="text-[#6F6B66]">Services</span>
+                <span>{user.services_enabled.join(", ") || "None"}</span>
+                <span className="text-[#6F6B66]">Member since</span>
+                <span>{new Date(user.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Appearance */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+        <h3 className="font-medium mb-1">Appearance</h3>
+        <p className="text-sm text-[#6F6B66] mb-3">Choose a colour palette for the interface.</p>
+        <Select
+          value={activeTheme}
+          onValueChange={(v) => handleThemeChange(v as ThemeName)}
+          disabled={themeSaving}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(THEME_LABELS) as ThemeName[]).map((key) => (
+              <SelectItem key={key} value={key}>
+                {THEME_LABELS[key]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Auto Model Settings */}
+      {user && !isGuest() && (
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+          <h3 className="font-medium mb-1">Auto Model</h3>
+          <p className="text-sm text-[#6F6B66] mb-4">
+            Configure which models the <code className="bg-[#F4F3EE] px-1 rounded">auto</code> model uses.
+            Light model is used for short prompts, heavy model for longer ones.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Light Model</label>
+              <Select
+                value={autoLightModel || "__default__"}
+                onValueChange={(v) => setAutoLightModel(v === "__default__" ? "" : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Auto (default: smallest local model)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Auto (default)</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Heavy Model</label>
+              <Select
+                value={autoHeavyModel || "__default__"}
+                onValueChange={(v) => setAutoHeavyModel(v === "__default__" ? "" : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Auto (default: best OpenRouter model)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Auto (default)</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">
+                Switch Threshold: {autoThreshold.toLocaleString()} tokens
+              </label>
+              <input
+                type="range"
+                min={100}
+                max={16000}
+                step={100}
+                value={autoThreshold}
+                onChange={(e) => setAutoThreshold(Number(e.target.value))}
+                className="w-full accent-[#C15F3C]"
+              />
+              <div className="flex justify-between text-xs text-[#B1ADA1] mt-0.5">
+                <span>100</span>
+                <span>Shorter prompts use light model, longer prompts use heavy model</span>
+                <span>16,000</span>
+              </div>
+            </div>
+            <Button
+              onClick={async () => {
+                setAutoSaving(true);
+                try {
+                  const updated = await authApi.updateMe({
+                    auto_light_model: autoLightModel || undefined,
+                    auto_heavy_model: autoHeavyModel || undefined,
+                    auto_token_threshold: autoThreshold,
+                  });
+                  setUser(updated);
+                  trigger("success");
+                } catch {
+                  trigger("error");
+                }
+                setAutoSaving(false);
+              }}
+              disabled={autoSaving}
+              size="sm"
+            >
+              {autoSaving ? "Saving..." : "Save Auto Model Settings"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Password Reset */}
+      {user && !isGuest() && (
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+          <h3 className="font-medium mb-3">Password</h3>
+          <p className="text-sm text-[#6F6B66] mb-3">
+            Request a password reset link to be sent to your email address.
+          </p>
+          <Button
+            onClick={handleRequestPasswordReset}
+            disabled={resetRequesting}
+            variant="ghost"
+            size="sm"
+          >
+            {resetRequesting ? "Sending..." : "Send Password Reset Email"}
+          </Button>
+          {resetMessage && (
+            <p className="text-sm text-[#2E7D32] mt-2">{resetMessage}</p>
+          )}
+        </div>
+      )}
+
+      {/* Onboarding */}
+      {user && !isGuest() && (
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+          <h3 className="font-medium mb-3">Onboarding</h3>
+          <p className="text-sm text-[#6F6B66] mb-3">
+            Replay the getting-started guide for a refresher on how to use the platform.
+          </p>
+          <Button
+            onClick={() => setShowOnboarding(true)}
+            variant="ghost"
+            size="sm"
+          >
+            Restart Onboarding
+          </Button>
+        </div>
+      )}
+
+      {/* MCP Servers */}
+      {!isGuest() && <McpSettings />}
+
       {/* API Keys */}
-      <div className="bg-gray-800 rounded-xl p-4 md:p-6 space-y-4">
+      <div className="bg-white rounded-xl p-4 md:p-6 space-y-4 border border-[#E5E1DB]">
         <h3 className="font-medium">API Keys</h3>
 
         {revealedKey && (
-          <div className="bg-green-900/30 border border-green-700 rounded-lg p-3">
-            <div className="text-xs text-green-300 mb-1">
+          <div className="bg-[#E8F5E9] border border-[#C8E6C9] rounded-lg p-3">
+            <div className="text-xs text-[#2E7D32] mb-1">
               Copy this key now - it won't be shown again:
             </div>
-            <code className="text-sm text-green-200 break-all block">
+            <code className="text-sm text-[#1B5E20] break-all block">
               {revealedKey}
             </code>
             <Button
@@ -416,119 +923,213 @@ export function AccountPage() {
               }}
               variant="ghost"
               size="sm"
-              className="mt-2 text-xs text-green-400 hover:text-green-300"
+              className="mt-2 text-xs text-[#2E7D32] hover:text-[#1B5E20]"
             >
               Copy to clipboard
             </Button>
 
-            {/* Integration Panels */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Claude Code Integration */}
-              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <img
-                    src="/claude-logo.svg"
-                    alt="Claude"
-                    className="w-5 h-5"
-                  />
-                  <span className="text-sm font-medium">Claude Code</span>
-                </div>
-                <p className="text-xs text-gray-400 mb-2">
-                  Configure Claude Code to use GPUShare as LLM gateway
-                </p>
-                <div className="space-y-2">
-                  <Button
-                    onClick={() => {
-                      const envConfig = `# Add to your shell profile (~/.zshrc or ~/.bashrc)
-export ANTHROPIC_BASE_URL="${API_URL}/v1"
-export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
-
-# Then restart Claude Code`;
-                      navigator.clipboard.writeText(envConfig);
-                      trigger("nudge");
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs"
+            {/* Integration Guide Tabs */}
+            <div className="mt-4">
+              <div className="flex border-b border-[#C8E6C9]">
+                {(
+                  [
+                    { key: "curl", label: "curl" },
+                    { key: "python", label: "Python" },
+                    { key: "claude-code", label: "Claude Code" },
+                    { key: "openclaw", label: "OpenClaw" },
+                    { key: "opencode", label: "OpenCode" },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setGuideTab(tab.key)}
+                    className={`px-3 py-2 text-xs font-medium transition-colors ${
+                      guideTab === tab.key
+                        ? "text-[#C15F3C] border-b-2 border-[#C15F3C]"
+                        : "text-[#6F6B66] hover:text-[#2D2B28]"
+                    }`}
                   >
-                    Copy Environment Setup
-                  </Button>
-                  <a
-                    href="https://code.claude.com/docs/en/llm-gateway"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-center text-xs text-blue-400 hover:text-blue-300"
-                  >
-                    View Setup Guide →
-                  </a>
-                </div>
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
-              {/* OpenClaw Integration */}
-              <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <img
-                    src="/openclaw-dark.svg"
-                    alt="OpenClaw"
-                    className="w-5 h-5"
-                  />
-                  <span className="text-sm font-medium">OpenClaw</span>
-                </div>
-                <p className="text-xs text-gray-400 mb-2">
-                  Add GPUShare as custom provider
-                </p>
-                <div className="space-y-2">
-                  <Button
-                    onClick={() => {
-                      const config = JSON.stringify(
-                        {
-                          models: {
-                            providers: {
-                              gpushare: {
-                                baseUrl: `${API_URL}/v1`,
-                                apiKey: revealedKey,
-                                api: "openai-completions",
-                                models: [
-                                  {
-                                    id: "gpt-4",
-                                    name: "GPUShare GPT-4",
-                                    reasoning: false,
-                                    input: ["text"],
-                                    cost: {
-                                      input: 0,
-                                      output: 0,
-                                      cacheRead: 0,
-                                      cacheWrite: 0,
-                                    },
-                                    contextWindow: 128000,
-                                    maxTokens: 4096,
-                                  },
-                                ],
-                              },
-                            },
-                          },
-                        },
-                        null,
-                        2,
-                      );
-                      navigator.clipboard.writeText(config);
-                      trigger("nudge");
-                    }}
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs"
-                  >
-                    Copy models.json Config
-                  </Button>
-                  <a
-                    href="https://docs.openclaw.ai/concepts/model-providers"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-center text-xs text-blue-400 hover:text-blue-300"
-                  >
-                    View Setup Guide →
-                  </a>
-                </div>
+              <div className="mt-3">
+                {guideTab === "curl" && (
+                  <div>
+                    <pre className="bg-white border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                      {curlSnippet}
+                    </pre>
+                    <Button
+                      onClick={() => {
+                        navigator.clipboard.writeText(curlSnippet);
+                        trigger("nudge");
+                      }}
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 text-xs text-[#2E7D32] hover:text-[#1B5E20]"
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                )}
+
+                {guideTab === "python" && (
+                  <div>
+                    <pre className="bg-white border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                      {pythonSnippet}
+                    </pre>
+                    <Button
+                      onClick={() => {
+                        navigator.clipboard.writeText(pythonSnippet);
+                        trigger("nudge");
+                      }}
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 text-xs text-[#2E7D32] hover:text-[#1B5E20]"
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                )}
+
+                {guideTab === "claude-code" && (
+                  <div className="bg-white border border-[#E5E1DB] rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <img
+                        src="/claude-logo.svg"
+                        alt="Claude"
+                        className="w-5 h-5"
+                      />
+                      <span className="text-sm font-medium">Claude Code</span>
+                    </div>
+                    <p className="text-xs text-[#6F6B66] mb-2">
+                      Configure Claude Code to use GPUShare as LLM gateway
+                    </p>
+                    <div className="space-y-2">
+                      <pre className="bg-[#F4F3EE] border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                        {claudeCodeSnippet}
+                      </pre>
+                      <Button
+                        onClick={() => {
+                          navigator.clipboard.writeText(claudeCodeSnippet);
+                          trigger("nudge");
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs"
+                      >
+                        Copy Environment Setup
+                      </Button>
+                      <a
+                        href="https://code.claude.com/docs/en/llm-gateway"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center text-xs text-[#C15F3C] hover:text-[#A84E30]"
+                      >
+                        View Setup Guide
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {guideTab === "openclaw" && (
+                  <div className="bg-white border border-[#E5E1DB] rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <img
+                        src="/openclaw-dark.svg"
+                        alt="OpenClaw"
+                        className="w-5 h-5"
+                      />
+                      <span className="text-sm font-medium">OpenClaw</span>
+                    </div>
+                    <p className="text-xs text-[#6F6B66] mb-2">
+                      Add GPUShare as custom provider
+                    </p>
+                    <div className="space-y-2">
+                      <pre className="bg-[#F4F3EE] border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                        {openClawConfig}
+                      </pre>
+                      <Button
+                        onClick={() => {
+                          navigator.clipboard.writeText(openClawConfig);
+                          trigger("nudge");
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs"
+                      >
+                        Copy models.json Config
+                      </Button>
+                      <a
+                        href="https://docs.openclaw.ai/concepts/model-providers"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center text-xs text-[#C15F3C] hover:text-[#A84E30]"
+                      >
+                        View Setup Guide
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {guideTab === "opencode" && (
+                  <div className="bg-white border border-[#E5E1DB] rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-medium">OpenCode</span>
+                    </div>
+                    <p className="text-xs text-[#6F6B66] mb-2">
+                      One-command setup. Installs OpenCode and configures it
+                      with GPUShare smart auto-routing.
+                    </p>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs font-medium text-[#2D2B28] mb-1">
+                          Linux / macOS
+                        </p>
+                        <pre className="bg-[#F4F3EE] border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                          {openCodeBashSnippet}
+                        </pre>
+                        <Button
+                          onClick={() => {
+                            navigator.clipboard.writeText(openCodeBashSnippet);
+                            trigger("nudge");
+                          }}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs"
+                        >
+                          Copy Bash Command
+                        </Button>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-[#2D2B28] mb-1">
+                          Windows PowerShell
+                        </p>
+                        <pre className="bg-[#F4F3EE] border border-[#E5E1DB] rounded-lg p-3 text-xs text-[#2D2B28] overflow-x-auto whitespace-pre-wrap">
+                          {openCodePsSnippet}
+                        </pre>
+                        <Button
+                          onClick={() => {
+                            navigator.clipboard.writeText(openCodePsSnippet);
+                            trigger("nudge");
+                          }}
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs"
+                        >
+                          Copy PowerShell Command
+                        </Button>
+                      </div>
+                      <p className="text-xs text-[#6F6B66]">
+                        Uses the "auto" model — routes simple prompts to fast
+                        local models and complex tasks to powerful models. Type{" "}
+                        <code className="bg-[#F4F3EE] px-1 rounded">/models</code>{" "}
+                        inside OpenCode to switch models manually.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -555,7 +1156,7 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[500px]">
               <thead>
-                <tr className="border-b border-gray-700 text-gray-400 text-left">
+                <tr className="border-b border-[#E5E1DB] text-[#6F6B66] text-left">
                   <th className="py-2 font-medium">Label</th>
                   <th className="py-2 font-medium">Created</th>
                   <th className="py-2 font-medium">Last Used</th>
@@ -565,21 +1166,23 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
               </thead>
               <tbody>
                 {apiKeys.map((k) => (
-                  <tr key={k.id} className="border-b border-gray-700/50">
+                  <tr key={k.id} className="border-b border-[#EDEBE6]">
                     <td className="py-2">{k.label || "-"}</td>
-                    <td className="py-2 text-gray-400">
-                      {new Date(k.created_at).toLocaleDateString()}
+                    <td className="py-2 text-[#6F6B66]">
+                      <RelativeTime date={k.created_at} />
                     </td>
-                    <td className="py-2 text-gray-400">
-                      {k.last_used
-                        ? new Date(k.last_used).toLocaleDateString()
-                        : "Never"}
+                    <td className="py-2 text-[#6F6B66]">
+                      {k.last_used ? (
+                        <RelativeTime date={k.last_used} />
+                      ) : (
+                        "Never"
+                      )}
                     </td>
                     <td className="py-2">
                       {k.revoked_at ? (
-                        <span className="text-red-400">Revoked</span>
+                        <span className="text-[#C62828]">Revoked</span>
                       ) : (
-                        <span className="text-green-400">Active</span>
+                        <span className="text-[#2E7D32]">Active</span>
                       )}
                     </td>
                     <td className="py-2">
@@ -588,7 +1191,7 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                           onClick={() => handleRevokeKey(k.id)}
                           variant="ghost"
                           size="sm"
-                          className="text-red-400 hover:text-red-300 text-xs h-auto py-1"
+                          className="text-[#C62828] hover:text-[#B71C1C] text-xs h-auto py-1"
                         >
                           Revoke
                         </Button>
@@ -600,19 +1203,133 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
             </table>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">No API keys</p>
+          <p className="text-sm text-[#B1ADA1]">No API keys</p>
+        )}
+      </div>
+
+      {/* Usage Statistics */}
+      <div className="space-y-4">
+        <h3 className="font-medium">Usage Statistics</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            label="Inference Requests"
+            value={usageStats.inferenceCount.toLocaleString()}
+            subLabel="From loaded usage logs"
+          />
+          <StatCard
+            label="Render Jobs"
+            value={
+              usageStats.renderCost > 0
+                ? Math.ceil(usageStats.renderCost / 0.01).toString()
+                : "\u2014"
+            }
+            subLabel="Estimated from cost data"
+          />
+          <StatCard
+            label="Total kWh"
+            value={usageStats.totalKwh.toFixed(4)}
+            subLabel="Energy consumed"
+          />
+        </div>
+
+        {/* Donut chart: cloud inference + local inference + render cost split */}
+        {totalCostForDonut > 0 && (
+          <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+            <h4 className="text-sm font-medium mb-4">Cost Breakdown</h4>
+            <div className="flex items-center gap-6">
+              <DonutChart
+                segments={[
+                  { label: "Cloud Inference", value: usageStats.cloudInferenceCost, color: "#C15F3C" },
+                  { label: "Local Inference", value: usageStats.localInferenceCost, color: "#F59E0B" },
+                  { label: "Render", value: usageStats.renderCost, color: "#5E35B1" },
+                ].filter((s) => s.value > 0)}
+              />
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#C15F3C]" />
+                  <span className="text-[#6F6B66]">Cloud Inference</span>
+                  <span className="font-medium">{fmtUsd(usageStats.cloudInferenceCost)}</span>
+                  <span className="text-[#B1ADA1]">({cloudInferencePct.toFixed(1)}%)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+                  <span className="text-[#6F6B66]">Local Inference</span>
+                  <span className="font-medium">{fmtUsd(usageStats.localInferenceCost)}</span>
+                  <span className="text-[#B1ADA1]">({localInferencePct.toFixed(1)}%)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-[#5E35B1]" />
+                  <span className="text-[#6F6B66]">Render</span>
+                  <span className="font-medium">{fmtUsd(usageStats.renderCost)}</span>
+                  <span className="text-[#B1ADA1]">({renderPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pie chart: top models by cost */}
+        {usageStats.topModels.length > 0 && (
+          <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+            <h4 className="text-sm font-medium mb-4">Top Models by Cost</h4>
+            <div className="flex items-center gap-6">
+              <PieChart
+                segments={[
+                  ...usageStats.topModels.map(([model, cost], i) => ({
+                    label: model,
+                    value: cost,
+                    color: ["#C15F3C", "#5E35B1", "#1565C0", "#2E7D32", "#F59E0B"][i],
+                  })),
+                  ...(usageStats.inferenceCost >
+                    usageStats.topModels.reduce((s, [, c]) => s + c, 0)
+                    ? [{
+                        label: "Other",
+                        value: usageStats.inferenceCost -
+                          usageStats.topModels.reduce((s, [, c]) => s + c, 0),
+                        color: "#9CA3AF",
+                      }]
+                    : []),
+                ]}
+              />
+              <div className="space-y-2 text-sm flex-1 min-w-0">
+                {usageStats.topModels.map(([model, cost], i) => {
+                  const pct = usageStats.inferenceCost > 0
+                    ? ((cost / usageStats.inferenceCost) * 100).toFixed(1)
+                    : "0";
+                  return (
+                    <div key={model} className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: ["#C15F3C", "#5E35B1", "#1565C0", "#2E7D32", "#F59E0B"][i] }}
+                      />
+                      <span className="text-[#6F6B66] truncate" title={model}>{model}</span>
+                      <span className="font-medium ml-auto flex-shrink-0">{fmtUsd(cost)}</span>
+                      <span className="text-[#B1ADA1] flex-shrink-0">({pct}%)</span>
+                    </div>
+                  );
+                })}
+                {usageStats.inferenceCost >
+                  usageStats.topModels.reduce((s, [, c]) => s + c, 0) && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0 bg-[#9CA3AF]" />
+                    <span className="text-[#6F6B66]">Other</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Usage Log */}
-      <div className="bg-gray-800 rounded-xl p-4 md:p-6 space-y-4">
+      <div className="bg-white rounded-xl p-4 md:p-6 space-y-4 border border-[#E5E1DB]">
         <h3 className="font-medium">Usage Log</h3>
         {usage.length > 0 ? (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[600px]">
                 <thead>
-                  <tr className="border-b border-gray-700 text-gray-400 text-left">
+                  <tr className="border-b border-[#E5E1DB] text-[#6F6B66] text-left">
                     <th className="py-2 font-medium">Model</th>
                     <th className="py-2 font-medium">In Tokens</th>
                     <th className="py-2 font-medium">Out Tokens</th>
@@ -625,19 +1342,21 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                 </thead>
                 <tbody>
                   {usage.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-700/50">
+                    <tr key={u.id} className="border-b border-[#EDEBE6]">
                       <td className="py-2">{u.model}</td>
-                      <td className="py-2 text-gray-400">
+                      <td className="py-2 text-[#6F6B66]">
                         {u.input_tokens.toLocaleString()}
                       </td>
-                      <td className="py-2 text-gray-400">
+                      <td className="py-2 text-[#6F6B66]">
                         {u.output_tokens.toLocaleString()}
                       </td>
                       {billingEnabled && (
                         <td className="py-2">${u.cost_nzd.toFixed(4)}</td>
                       )}
-                      <td className="py-2 text-gray-400">{u.kwh.toFixed(4)}</td>
-                      <td className="py-2 text-gray-400">
+                      <td className="py-2 text-[#6F6B66]">
+                        {u.kwh.toFixed(4)}
+                      </td>
+                      <td className="py-2 text-[#6F6B66]">
                         {new Date(u.created_at).toLocaleString()}
                       </td>
                     </tr>
@@ -652,9 +1371,9 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                 variant="ghost"
                 size="sm"
               >
-                ← Previous
+                Previous
               </Button>
-              <span className="text-gray-500">
+              <span className="text-[#B1ADA1]">
                 Showing {usageOffset + 1}-{usageOffset + usage.length}
               </span>
               <Button
@@ -663,24 +1382,24 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                 variant="ghost"
                 size="sm"
               >
-                Next →
+                Next
               </Button>
             </div>
           </>
         ) : (
-          <p className="text-sm text-gray-500">No usage records</p>
+          <p className="text-sm text-[#B1ADA1]">No usage records</p>
         )}
       </div>
 
-      {/* Invoices — only when billing enabled */}
+      {/* Invoices */}
       {billingEnabled && (
-        <div className="bg-gray-800 rounded-xl p-4 md:p-6 space-y-4">
+        <div className="bg-white rounded-xl p-4 md:p-6 space-y-4 border border-[#E5E1DB]">
           <h3 className="font-medium">Invoices</h3>
           {invoices.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[500px]">
                 <thead>
-                  <tr className="border-b border-gray-700 text-gray-400 text-left">
+                  <tr className="border-b border-[#E5E1DB] text-[#6F6B66] text-left">
                     <th className="py-2 font-medium">Period</th>
                     <th className="py-2 font-medium">Amount</th>
                     <th className="py-2 font-medium">Status</th>
@@ -689,14 +1408,14 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                 </thead>
                 <tbody>
                   {invoices.map((inv) => (
-                    <tr key={inv.id} className="border-b border-gray-700/50">
+                    <tr key={inv.id} className="border-b border-[#EDEBE6]">
                       <td className="py-2">
                         {new Date(inv.period_start).toLocaleDateString()} -{" "}
                         {new Date(inv.period_end).toLocaleDateString()}
                       </td>
                       <td className="py-2">${inv.amount_nzd.toFixed(2)}</td>
                       <td className="py-2 capitalize">{inv.status}</td>
-                      <td className="py-2 text-gray-400">
+                      <td className="py-2 text-[#6F6B66]">
                         {inv.paid_at
                           ? new Date(inv.paid_at).toLocaleDateString()
                           : "-"}
@@ -707,10 +1426,30 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
               </table>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">No invoices</p>
+            <p className="text-sm text-[#B1ADA1]">No invoices</p>
           )}
         </div>
       )}
+
+      {/* Sign Out */}
+      <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB] flex items-center justify-between">
+        <div>
+          <h3 className="font-medium">Sign out</h3>
+          {user?.email && <p className="text-sm text-[#6F6B66] mt-0.5">{user.email}</p>}
+        </div>
+        <Button
+          onClick={() => {
+            trigger("nudge");
+            clearToken();
+            router.navigate({ to: "/login" });
+          }}
+          variant="ghost"
+          size="sm"
+          className="text-[#C62828] hover:text-[#B71C1C] shrink-0"
+        >
+          Logout
+        </Button>
+      </div>
 
       {/* Payment Method Setup Modal */}
       {setupClientSecret && (
@@ -719,13 +1458,23 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
           onSuccess={async () => {
             setSetupClientSecret(null);
             trigger("success");
-            // Reload payment methods
             const pm = await billing.listPaymentMethods();
             setPaymentMethods(pm);
           }}
           onCancel={() => {
             setSetupClientSecret(null);
           }}
+        />
+      )}
+
+      {user && (
+        <OnboardingModal
+          open={showOnboarding}
+          role={user.role === "admin" ? "admin" : "user"}
+          nodeName={health?.node ?? "GPUShare"}
+          health={health}
+          billingEnabled={billingEnabled}
+          onComplete={() => setShowOnboarding(false)}
         />
       )}
     </div>

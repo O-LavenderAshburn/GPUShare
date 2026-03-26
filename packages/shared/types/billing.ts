@@ -3,6 +3,11 @@ export interface BalanceResponse {
   this_month_usage_nzd: number;
   hard_limit_nzd: number;
   billing_type: string;
+  total_topped_up_nzd: number;
+  total_used_nzd: number;
+  total_inference_cost_nzd: number;
+  total_cloud_inference_cost_nzd: number;
+  total_render_cost_nzd: number;
 }
 
 export interface UsageLogResponse {

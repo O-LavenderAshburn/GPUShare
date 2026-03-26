@@ -1,20 +1,26 @@
 services:
-  fastapi:
+  backend:
     build:
-      context: ./packages/server
+      context: ./packages/backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8080:8080"
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - render-tmp:/tmp/renders
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/ping', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   render-worker:
     build:
-      context: ./packages/server
+      context: ./packages/backend
       dockerfile: Dockerfile
     command: python -m app.workers.render_worker
     env_file: .env
@@ -23,8 +29,31 @@ services:
     volumes:
       - render-tmp:/tmp/renders
     depends_on:
-      - fastapi
+      - backend
     restart: unless-stopped
+
+  middleware:
+    build:
+      context: ./packages/middleware
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./packages/backend/skills:/skills:ro
+    environment:
+      - SKILLS_DIR=/skills
+      - BACKEND_URL=http://backend:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # Cloudflare Tunnel — two modes:
   #   With TUNNEL_TOKEN set in .env: uses your configured tunnel + domain
@@ -32,9 +61,13 @@ services:
   #     separately to get a free trycloudflare.com URL (no account needed)
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run --token ${TUNNEL_TOKEN}
+    network_mode: host
+    volumes:
+      - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
     depends_on:
-      - fastapi
+      middleware:
+        condition: service_healthy
     restart: unless-stopped
     profiles:
       - tunnel

@@ -1,4 +1,4 @@
-# GPU Node — Architecture & Specification
+# GPUShare — Architecture & Specification
 
 > v0.1 · 21 March 2026
 
@@ -13,7 +13,7 @@
 
 ## 1. System Overview
 
-GPU Node separates concerns cleanly across three layers: a static frontend hosted on Vercel, a lightweight proxy running on your machine, and the GPU backends (Ollama + Blender). Your PC only draws inference/render-level power when actively processing jobs — everything else is always available.
+GPUShare separates concerns cleanly across three layers: a static frontend hosted on Vercel, a lightweight proxy running on your machine, and the GPU backends (Ollama + Blender). Your PC only draws inference/render-level power when actively processing jobs — everything else is always available.
 
 ### Architecture
 
@@ -93,7 +93,7 @@ FastAPI proxy
 ## 3. Repository Structure
 
 ```
-gpu-node/
+gpushare/
 ├── packages/
 │   ├── frontend/                    # Vercel — Vite + React + TanStack Router + Tailwind
 │   │   ├── src/
@@ -437,7 +437,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 CLOUDFLARE_R2_ACCOUNT_ID=...
 CLOUDFLARE_R2_ACCESS_KEY_ID=...
 CLOUDFLARE_R2_SECRET_ACCESS_KEY=...
-CLOUDFLARE_R2_BUCKET=gpu-node-files
+CLOUDFLARE_R2_BUCKET=gpushare-files
 RESEND_API_KEY=re_...              # transactional email
 ```
 
@@ -471,7 +471,7 @@ INVOICE_DAY=1                      # day of month to generate invoices
 ```env
 INVITE_ONLY=true                   # false = open self-signup
 REQUIRE_APPROVAL=true              # admin must approve new accounts
-NODE_NAME=My GPU Node              # shown in the UI header
+NODE_NAME=My GPUShare              # shown in the UI header
 ADMIN_EMAIL=you@example.com        # receives alerts and approvals
 ```
 
