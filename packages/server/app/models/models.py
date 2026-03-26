@@ -59,6 +59,11 @@ class User(Base):
     theme: Mapped[str] = mapped_column(
         String, default="default", server_default=text("'default'")
     )
+    auto_light_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    auto_heavy_model: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    auto_token_threshold: Mapped[int] = mapped_column(
+        Integer, default=2000, server_default=text("2000")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("now()"),

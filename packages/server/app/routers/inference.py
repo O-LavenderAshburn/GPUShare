@@ -125,12 +125,15 @@ def _to_openrouter_message(m) -> dict:
 AUTO_TOKEN_THRESHOLD = 2000
 
 
-async def _resolve_auto_model(input_tokens: int) -> tuple[str, bool]:
+async def _resolve_auto_model(
+    input_tokens: int,
+    user: User | None = None,
+) -> tuple[str, bool]:
     """Pick a real model when the user requests 'auto'.
 
     Returns (model_name, use_openrouter).
-    Small prompts (< threshold) → lightest local model.
-    Large prompts (>= threshold) → heaviest local model or first OpenRouter model.
+    Respects user preferences for light/heavy models and token threshold.
+    Falls back to server defaults when user preferences are not set.
     """
     settings = get_settings()
 
@@ -146,14 +149,33 @@ async def _resolve_auto_model(input_tokens: int) -> tuple[str, bool]:
         except Exception:
             pass
 
-    if input_tokens < AUTO_TOKEN_THRESHOLD:
-        # Light: prefer first (smallest) local model
+    # Resolve the light and heavy model choices
+    light_model: str | None = None
+    heavy_model: str | None = None
+    threshold = AUTO_TOKEN_THRESHOLD
+
+    if user is not None:
+        if user.auto_light_model:
+            light_model = user.auto_light_model
+        if user.auto_heavy_model:
+            heavy_model = user.auto_heavy_model
+        if user.auto_token_threshold:
+            threshold = user.auto_token_threshold
+
+    if input_tokens < threshold:
+        # Light: use user preference, or fallback to first local model
+        if light_model:
+            use_or = is_openrouter_model(light_model)
+            return light_model, use_or
         if local_models:
             return local_models[0], False
         if or_models:
             return or_models[0]["id"], True
     else:
-        # Heavy: prefer OpenRouter if available, else largest local model
+        # Heavy: use user preference, or fallback to OpenRouter or last local model
+        if heavy_model:
+            use_or = is_openrouter_model(heavy_model)
+            return heavy_model, use_or
         if or_models:
             return or_models[0]["id"], True
         if local_models:
@@ -193,7 +215,7 @@ async def create_chat_completion(
 
     # Resolve "auto" to a real model
     if body.model == "auto":
-        resolved_model, _ = await _resolve_auto_model(input_tokens)
+        resolved_model, _ = await _resolve_auto_model(input_tokens, user=user)
         body = body.model_copy(update={"model": resolved_model})
 
     use_openrouter = is_openrouter_model(body.model) and settings.OPENROUTER_API_KEY

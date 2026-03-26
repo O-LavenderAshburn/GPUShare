@@ -199,8 +199,14 @@ export const auth = {
   signup: (data: SignupRequest) => post<UserResponse>("/v1/auth/signup", data),
   guestLogin: () => post<TokenResponse>("/v1/auth/guest", {}),
   getMe: () => get<UserResponse>("/v1/auth/me"),
-  updateMe: (data: { name?: string; email?: string; theme?: string }) =>
-    patch<UserResponse>("/v1/auth/me", data),
+  updateMe: (data: {
+    name?: string;
+    email?: string;
+    theme?: string;
+    auto_light_model?: string;
+    auto_heavy_model?: string;
+    auto_token_threshold?: number;
+  }) => patch<UserResponse>("/v1/auth/me", data),
   requestPasswordReset: (email: string) =>
     post<{ message: string }>("/v1/auth/password-reset/request", { email }),
   confirmPasswordReset: (token: string, password: string) =>

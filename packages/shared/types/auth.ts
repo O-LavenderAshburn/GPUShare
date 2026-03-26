@@ -26,6 +26,9 @@ export interface UserResponse {
   services_enabled: string[];
   stripe_customer_id: string | null;
   theme: string;
+  auto_light_model: string | null;
+  auto_heavy_model: string | null;
+  auto_token_threshold: number;
   created_at: string;
 }
 

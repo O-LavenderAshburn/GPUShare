@@ -37,6 +37,32 @@ async def list_running_models() -> list[str]:
         return [m["name"] for m in data.get("models", [])]
 
 
+async def get_local_models() -> list[str]:
+    """Get all locally available Ollama models sorted by parameter size (smallest first).
+
+    Returns an empty list if Ollama is unavailable.
+    """
+    import re
+
+    settings = get_settings()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{settings.OLLAMA_HOST}/api/tags")
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            models = [m["name"] for m in data.get("models", [])]
+
+            def _param_size(name: str) -> float:
+                """Extract parameter size from model name for sorting."""
+                match = re.search(r"(\d+(?:\.\d+)?)\s*[bB]", name)
+                return float(match.group(1)) if match else 0.0
+
+            return sorted(models, key=_param_size)
+    except Exception:
+        return []
+
+
 async def chat_completion(
     model: str,
     messages: list[dict],
@@ -100,7 +126,9 @@ async def chat_completion_stream(
         payload["options"] = options
 
     async with httpx.AsyncClient(timeout=300.0) as client:
-        async with client.stream("POST", f"{settings.OLLAMA_HOST}/api/chat", json=payload) as resp:
+        async with client.stream(
+            "POST", f"{settings.OLLAMA_HOST}/api/chat", json=payload
+        ) as resp:
             if resp.status_code >= 400:
                 # Read the body to get Ollama's error message before raising
                 body = await resp.aread()

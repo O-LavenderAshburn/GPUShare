@@ -37,6 +37,9 @@ class UserResponse(BaseModel):
     hard_limit_nzd: float
     services_enabled: list[str]
     theme: str
+    auto_light_model: str | None = None
+    auto_heavy_model: str | None = None
+    auto_token_threshold: int = 2000
     created_at: datetime
 
 
@@ -67,6 +70,9 @@ class UpdateProfileRequest(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     theme: str | None = None
+    auto_light_model: str | None = None
+    auto_heavy_model: str | None = None
+    auto_token_threshold: int | None = None
 
 
 class PasswordResetRequest(BaseModel):

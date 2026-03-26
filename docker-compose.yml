@@ -1,4 +1,17 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   fastapi:
     build:
       context: ./packages/server
@@ -32,6 +45,18 @@ services:
       - fastapi
     restart: unless-stopped
 
+  celery-worker:
+    build:
+      context: ./packages/server
+      dockerfile: Dockerfile.celery
+    env_file: .env
+    depends_on:
+      fastapi:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # Cloudflare Tunnel — two modes:
   #   With TUNNEL_TOKEN set in .env: uses your configured tunnel + domain
   #   Without TUNNEL_TOKEN: run `cloudflared tunnel --url http://localhost:8000`
@@ -51,3 +76,4 @@ services:
 
 volumes:
   render-tmp:
+  redis-data:

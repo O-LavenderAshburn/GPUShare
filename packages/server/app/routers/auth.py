@@ -326,6 +326,9 @@ async def me(user: User | None = Depends(get_current_user)):
             hard_limit_nzd=0.0,
             services_enabled=["inference"],
             theme="default",
+            auto_light_model=None,
+            auto_heavy_model=None,
+            auto_token_threshold=2000,
             created_at=datetime.now(timezone.utc),
         )
     return user
@@ -355,6 +358,18 @@ async def update_me(
                 detail=f"Invalid theme. Must be one of: {', '.join(valid_themes)}",
             )
         user.theme = body.theme
+
+    if body.auto_light_model is not None:
+        user.auto_light_model = body.auto_light_model
+    if body.auto_heavy_model is not None:
+        user.auto_heavy_model = body.auto_heavy_model
+    if body.auto_token_threshold is not None:
+        if body.auto_token_threshold < 100 or body.auto_token_threshold > 100000:
+            raise HTTPException(
+                status_code=400,
+                detail="Token threshold must be between 100 and 100000",
+            )
+        user.auto_token_threshold = body.auto_token_threshold
 
     await db.commit()
     await db.refresh(user)

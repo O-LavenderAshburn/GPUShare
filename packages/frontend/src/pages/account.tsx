@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useWebHaptics } from "../lib/haptics";
-import { auth as authApi, billing, getHealth } from "../lib/api";
+import { auth as authApi, billing, getHealth, inference } from "../lib/api";
 import type { HealthResponse } from "../lib/api";
 import type { UserResponse, ApiKeyResponse } from "@shared/types/auth";
 import type {
@@ -167,33 +167,40 @@ export function AccountPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [resetRequesting, setResetRequesting] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
+  const [autoLightModel, setAutoLightModel] = useState("");
+  const [autoHeavyModel, setAutoHeavyModel] = useState("");
+  const [autoThreshold, setAutoThreshold] = useState(2000);
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
 
   const billingEnabled =
     (health?.integrations?.billing && health?.integrations?.stripe) ?? false;
 
-  // Compute usage statistics from loaded usage data and backend aggregates
+  // Compute usage statistics from usage logs (more reliable than backend aggregates)
   const usageStats = useMemo(() => {
     let cloudInferenceCount = 0;
     let localInferenceCount = 0;
-    const cloudModelCosts: Record<string, number> = {};
+    let cloudInferenceCost = 0;
+    let localInferenceCost = 0;
+    const modelCosts: Record<string, number> = {};
 
     for (const u of usage) {
       const isCloud = u.model.includes("/");
       if (isCloud) {
         cloudInferenceCount++;
-        cloudModelCosts[u.model] = (cloudModelCosts[u.model] || 0) + u.cost_nzd;
+        cloudInferenceCost += u.cost_nzd;
       } else {
         localInferenceCount++;
+        localInferenceCost += u.cost_nzd;
       }
+      modelCosts[u.model] = (modelCosts[u.model] || 0) + u.cost_nzd;
     }
 
     const totalKwh = usage.reduce((sum, u) => sum + u.kwh, 0);
-    const totalInferenceCost = balance?.total_inference_cost_nzd ?? 0;
-    const cloudInferenceCost = balance?.total_cloud_inference_cost_nzd ?? 0;
     const renderCost = balance?.total_render_cost_nzd ?? 0;
-    const localInferenceCost = Math.max(0, totalInferenceCost - cloudInferenceCost);
+    const totalInferenceCost = cloudInferenceCost + localInferenceCost;
 
-    const topCloudModels = Object.entries(cloudModelCosts)
+    const topModels = Object.entries(modelCosts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
@@ -207,7 +214,7 @@ export function AccountPage() {
       inferenceCost: totalInferenceCost,
       renderCost,
       totalUsed: balance?.total_used_nzd ?? 0,
-      topCloudModels,
+      topModels,
     };
   }, [usage, balance]);
 
@@ -268,6 +275,9 @@ export function AccountPage() {
         setEditName(u.name || "");
         setEditEmail(u.email);
         if (u.theme) setActiveTheme(u.theme as ThemeName);
+        setAutoLightModel(u.auto_light_model || "");
+        setAutoHeavyModel(u.auto_heavy_model || "");
+        setAutoThreshold(u.auto_token_threshold || 2000);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -283,6 +293,19 @@ export function AccountPage() {
       .then(setUsage)
       .catch(() => {});
   }, [usageOffset]);
+
+  // Fetch available models for auto model picker
+  useEffect(() => {
+    inference
+      .listModels()
+      .then((res) => {
+        // Exclude 'auto' itself, list all real models
+        setAvailableModels(
+          res.data.filter((m) => m.id !== "auto").map((m) => m.id),
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleCreateKey() {
     try {
@@ -795,6 +818,97 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
         </Select>
       </div>
 
+      {/* Auto Model Settings */}
+      {user && !isGuest() && (
+        <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
+          <h3 className="font-medium mb-1">Auto Model</h3>
+          <p className="text-sm text-[#6F6B66] mb-4">
+            Configure which models the <code className="bg-[#F4F3EE] px-1 rounded">auto</code> model uses.
+            Light model is used for short prompts, heavy model for longer ones.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Light Model</label>
+              <Select
+                value={autoLightModel || "__default__"}
+                onValueChange={(v) => setAutoLightModel(v === "__default__" ? "" : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Auto (default: smallest local model)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Auto (default)</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">Heavy Model</label>
+              <Select
+                value={autoHeavyModel || "__default__"}
+                onValueChange={(v) => setAutoHeavyModel(v === "__default__" ? "" : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Auto (default: best OpenRouter model)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Auto (default)</SelectItem>
+                  {availableModels.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm text-[#6F6B66] mb-1">
+                Switch Threshold: {autoThreshold.toLocaleString()} tokens
+              </label>
+              <input
+                type="range"
+                min={100}
+                max={16000}
+                step={100}
+                value={autoThreshold}
+                onChange={(e) => setAutoThreshold(Number(e.target.value))}
+                className="w-full accent-[#C15F3C]"
+              />
+              <div className="flex justify-between text-xs text-[#B1ADA1] mt-0.5">
+                <span>100</span>
+                <span>Shorter prompts use light model, longer prompts use heavy model</span>
+                <span>16,000</span>
+              </div>
+            </div>
+            <Button
+              onClick={async () => {
+                setAutoSaving(true);
+                try {
+                  const updated = await authApi.updateMe({
+                    auto_light_model: autoLightModel || undefined,
+                    auto_heavy_model: autoHeavyModel || undefined,
+                    auto_token_threshold: autoThreshold,
+                  });
+                  setUser(updated);
+                  trigger("success");
+                } catch {
+                  trigger("error");
+                }
+                setAutoSaving(false);
+              }}
+              disabled={autoSaving}
+              size="sm"
+            >
+              {autoSaving ? "Saving..." : "Save Auto Model Settings"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Password Reset */}
       {user && !isGuest() && (
         <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
@@ -1180,33 +1294,33 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
           </div>
         )}
 
-        {/* Pie chart: top cloud models by cost */}
-        {usageStats.topCloudModels.length > 0 && (
+        {/* Pie chart: top models by cost */}
+        {usageStats.topModels.length > 0 && (
           <div className="bg-white rounded-xl p-4 md:p-6 border border-[#E5E1DB]">
-            <h4 className="text-sm font-medium mb-4">Top Cloud Models by Cost</h4>
+            <h4 className="text-sm font-medium mb-4">Top Models by Cost</h4>
             <div className="flex items-center gap-6">
               <PieChart
                 segments={[
-                  ...usageStats.topCloudModels.map(([model, cost], i) => ({
+                  ...usageStats.topModels.map(([model, cost], i) => ({
                     label: model,
                     value: cost,
                     color: ["#C15F3C", "#5E35B1", "#1565C0", "#2E7D32", "#F59E0B"][i],
                   })),
-                  ...(usageStats.cloudInferenceCost >
-                    usageStats.topCloudModels.reduce((s, [, c]) => s + c, 0)
+                  ...(usageStats.inferenceCost >
+                    usageStats.topModels.reduce((s, [, c]) => s + c, 0)
                     ? [{
                         label: "Other",
-                        value: usageStats.cloudInferenceCost -
-                          usageStats.topCloudModels.reduce((s, [, c]) => s + c, 0),
+                        value: usageStats.inferenceCost -
+                          usageStats.topModels.reduce((s, [, c]) => s + c, 0),
                         color: "#9CA3AF",
                       }]
                     : []),
                 ]}
               />
               <div className="space-y-2 text-sm flex-1 min-w-0">
-                {usageStats.topCloudModels.map(([model, cost], i) => {
-                  const pct = usageStats.cloudInferenceCost > 0
-                    ? ((cost / usageStats.cloudInferenceCost) * 100).toFixed(1)
+                {usageStats.topModels.map(([model, cost], i) => {
+                  const pct = usageStats.inferenceCost > 0
+                    ? ((cost / usageStats.inferenceCost) * 100).toFixed(1)
                     : "0";
                   return (
                     <div key={model} className="flex items-center gap-2">
@@ -1220,8 +1334,8 @@ export ANTHROPIC_AUTH_TOKEN="${revealedKey}"
                     </div>
                   );
                 })}
-                {usageStats.cloudInferenceCost >
-                  usageStats.topCloudModels.reduce((s, [, c]) => s + c, 0) && (
+                {usageStats.inferenceCost >
+                  usageStats.topModels.reduce((s, [, c]) => s + c, 0) && (
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full flex-shrink-0 bg-[#9CA3AF]" />
                     <span className="text-[#6F6B66]">Other</span>
